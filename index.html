@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>สั่งผักสดล่วงหน้า - ตลาดเช้า</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Prompt', sans-serif; }
+  </style>
+</head>
+<body class="bg-gray-100 min-h-screen pb-24 text-gray-800">
+
+  <!-- ตั้งค่า URL ของ Apps Script ตรงนี้ -->
+  <script>
+    const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxZdndUI8cC_6tIBERh3BEqm_oJHbBXQA4pkZmAwnkHCmSi3LHKeGwSFUnNCTHoTC0hLg/exec";
+  </script>
+
+  <!-- Header -->
+  <header class="bg-emerald-700 text-white p-4 shadow-md sticky top-0 z-40">
+    <div class="max-w-md mx-auto flex justify-between items-center">
+      <div>
+        <h1 class="text-xl font-bold">🥬 สั่งผักสดตลาดเช้า</h1>
+        <p class="text-xs text-emerald-100" id="displayMarketDate">รอบตลาดเช้า: กำลังโหลด...</p>
+      </div>
+      <!-- ปุ่มสลับดูประวัติ -->
+      <button onclick="toggleHistoryModal(true)" class="bg-emerald-800 hover:bg-emerald-900 text-xs px-3 py-1.5 rounded-lg border border-emerald-500 flex items-center gap-1">
+        📋 ประวัติของฉัน
+      </button>
+    </div>
+  </header>
+
+  <main class="max-w-md mx-auto p-4 space-y-4">
+
+    <!-- เลือกร้านค้า -->
+    <section class="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
+      <label class="block text-sm font-semibold text-gray-700 mb-1">🏪 เลือกร้านของคุณ</label>
+      <select id="customerSelect" onchange="onCustomerChange()" class="w-full p-2.5 bg-gray-50 border border-gray-300 rounded-lg text-base focus:ring-2 focus:ring-emerald-500 focus:outline-none">
+        <option value="">-- แตะเพื่อเลือกร้าน --</option>
+      </select>
+    </section>
+
+    <!-- รายการผักแนะนำ / สั่งประจำ -->
+    <section id="favSection" class="hidden">
+      <h2 class="text-base font-bold text-gray-800 mb-2 flex items-center gap-1">
+        ⭐ รายการสั่งประจำของคุณ
+      </h2>
+      <div id="favList" class="space-y-2"></div>
+    </section>
+
+    <!-- รายการผักทั้งหมด -->
+    <section>
+      <div class="flex justify-between items-center mb-2">
+        <h2 class="text-base font-bold text-gray-800">🥦 รายการผักทั้งหมด</h2>
+      </div>
+      <input type="text" id="searchBox" oninput="filterVegetables()" placeholder="🔍 พิมพ์ค้นหา เช่น คะน้า, แตง..." class="w-full p-2.5 mb-3 bg-white border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none">
+      <div id="allVegList" class="space-y-2">
+        <div class="text-center py-8 text-gray-400 text-sm">กำลังโหลดข้อมูลผัก...</div>
+      </div>
+    </section>
+
+    <!-- รายการ Add-on นอกเมนู -->
+    <section class="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
+      <label class="block text-sm font-semibold text-gray-700 mb-1">📝 สั่งของพิเศษนอกเมนู (Add-on)</label>
+      <p class="text-xs text-gray-500 mb-2">พิมพ์รายการสดหรือของอื่น ๆ ที่ไม่มีในรายการ</p>
+      <textarea id="addonText" rows="2" placeholder="เช่น เอาไก่ 3 ตัว, มะพร้าวเผา 5 แก่น, พริกแห้ง 1 ถุง..." class="w-full p-2.5 bg-gray-50 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none"></textarea>
+    </section>
+
+  </main>
+
+  <!-- Bottom Bar: สรุปยอดและกดส่ง -->
+  <div class="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-3 shadow-lg z-30">
+    <div class="max-w-md mx-auto flex items-center justify-between gap-3">
+      <div>
+        <p class="text-xs text-gray-500">เลือกทั้งหมด</p>
+        <p class="text-lg font-bold text-emerald-700"><span id="cartCount">0</span> รายการ</p>
+      </div>
+      <button onclick="submitOrder()" id="btnSubmit" class="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-4 rounded-xl shadow transition duration-150 flex items-center justify-center gap-2">
+        <span>ยืนยันส่งออเดอร์</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Modal ประวัติการสั่งซื้อย้อนหลัง -->
+  <div id="historyModal" class="fixed inset-0 bg-black/60 z-50 hidden flex items-end sm:items-center justify-center p-0 sm:p-4">
+    <div class="bg-white w-full max-w-md max-h-[85vh] rounded-t-2xl sm:rounded-2xl flex flex-col overflow-hidden shadow-2xl">
+      <div class="p-4 border-b border-gray-200 flex justify-between items-center bg-gray-50">
+        <h3 class="font-bold text-gray-800">📋 ประวัติการสั่งซื้อย้อนหลัง</h3>
+        <button onclick="toggleHistoryModal(false)" class="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
+      </div>
+      <div id="historyContent" class="p-4 overflow-y-auto space-y-3 flex-1 text-sm">
+        <p class="text-center text-gray-400 py-6">กำลังโหลดประวัติ...</p>
+      </div>
+      <div class="p-3 border-t bg-gray-50">
+        <button onclick="toggleHistoryModal(false)" class="w-full py-2 bg-gray-200 hover:bg-gray-300 rounded-lg font-semibold text-gray-700 text-sm">ปิด</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let vegetables = [];
+    let customers = [];
+    let cart = {}; // { "ผักชี": { qty: 1, unit: "กิโลกรัม" } }
+    let marketDate = "";
+
+    // กำหนดรอบตลาดเช้า (ถ้าสั่งหลังเที่ยงวัน จะนับเป็นตลาดเช้าของวันพรุ่งนี้)
+    function calculateMarketDate() {
+      const now = new Date();
+      const target = new Date();
+      if (now.getHours() >= 12) {
+        target.setDate(now.getDate() + 1);
+      }
+      const yyyy = target.getFullYear();
+      const mm = String(target.getMonth() + 1).padStart(2, '0');
+      const dd = String(target.getDate()).padStart(2, '0');
+      marketDate = `${yyyy}-${mm}-${dd}`;
+      
+      const thDate = target.toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' });
+      document.getElementById('displayMarketDate').innerText = `รอบตลาดเช้า: ${thDate}`;
+    }
+
+    // โหลดข้อมูลเริ่มต้นจาก Sheets
+    async function init() {
+      calculateMarketDate();
+      try {
+        const res = await fetch(`${APPS_SCRIPT_URL}?action=getInitialData`);
+        const data = await res.json();
+        if (data.success) {
+          vegetables = data.vegetables;
+          customers = data.customers;
+          renderCustomers();
+          renderVegetables();
+
+          // เลือกร้านเดิมที่เคยบันทึกไว้ใน LocalStorage
+          const savedCust = localStorage.getItem('selectedCustomer');
+          if (savedCust) {
+            document.getElementById('customerSelect').value = savedCust;
+            onCustomerChange();
+          }
+        }
+      } catch (e) {
+        alert("ไม่สามารถเชื่อมต่อฐานข้อมูลได้ กรุณาตรวจเช็คอินเทอร์เน็ต");
+      }
+    }
+
+    function renderCustomers() {
+      const sel = document.getElementById('customerSelect');
+      sel.innerHTML = '<option value="">-- แตะเพื่อเลือกร้าน --</option>';
+      customers.forEach(c => {
+        sel.innerHTML += `<option value="${c.name}">${c.name}</option>`;
+      });
+    }
+
+    function onCustomerChange() {
+      const name = document.getElementById('customerSelect').value;
+      if (!name) {
+        document.getElementById('favSection').classList.add('hidden');
+        return;
+      }
+      localStorage.setItem('selectedCustomer', name);
+
+      const cust = customers.find(c => c.name === name);
+      if (cust && cust.favorites && cust.favorites.length > 0) {
+        renderFavorites(cust.favorites);
+        document.getElementById('favSection').classList.remove('hidden');
+      } else {
+        document.getElementById('favSection').classList.add('hidden');
+      }
+    }
+
+    function renderFavorites(favNames) {
+      const list = document.getElementById('favList');
+      const favVegs = vegetables.filter(v => favNames.includes(v.name));
+      list.innerHTML = favVegs.map(v => createVegCardHTML(v, 'fav')).join('');
+    }
+
+    function renderVegetables(filtered = null) {
+      const list = document.getElementById('allVegList');
+      const data = filtered || vegetables;
+      if (data.length === 0) {
+        list.innerHTML = '<div class="text-center py-4 text-gray-400 text-sm">ไม่พบรายการที่ค้นหา</div>';
+        return;
+      }
+      list.innerHTML = data.map(v => createVegCardHTML(v, 'all')).join('');
+    }
+
+    function createVegCardHTML(veg, prefix) {
+      const cur = cart[veg.name] || { qty: 0, unit: veg.unit };
+      const imgSrc = veg.image ? `images/${veg.image}` : '';
+      return `
+        <div class="bg-white p-3 rounded-xl border border-gray-200 flex items-center justify-between shadow-sm">
+          <div class="flex items-center gap-3">
+            ${imgSrc ? `<img src="${imgSrc}" onerror="this.style.display='none'" class="w-12 h-12 rounded-lg object-cover bg-gray-100">` : ''}
+            <div>
+              <p class="font-bold text-gray-800 text-base">${veg.name}</p>
+              <p class="text-xs text-gray-500">หน่วย: ${veg.unit}</p>
+            </div>
+          </div>
+          <div class="flex flex-col items-end gap-1">
+            <div class="flex items-center border border-gray-300 rounded-lg overflow-hidden bg-gray-50">
+              <button onclick="updateQty('${veg.name}', -1, '${veg.unit}')" class="px-3 py-1 bg-gray-200 active:bg-gray-300 font-bold text-gray-700">-</button>
+              <input type="text" readonly value="${cur.qty || 0}" class="w-12 text-center bg-transparent font-bold text-sm text-gray-800">
+              <button onclick="updateQty('${veg.name}', 1, '${veg.unit}')" class="px-3 py-1 bg-emerald-600 active:bg-emerald-700 font-bold text-white">+</button>
+            </div>
+            <!-- ปุ่มลัดยอดฮิต -->
+            <div class="flex gap-1 text-[11px] text-emerald-700 font-medium">
+              <button onclick="setQty('${veg.name}', 0.5, '${veg.unit}')" class="bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">0.5</button>
+              <button onclick="setQty('${veg.name}', 1, '${veg.unit}')" class="bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">1</button>
+              <button onclick="setQty('${veg.name}', 2, '${veg.unit}')" class="bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">2</button>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function setQty(name, val, unit) {
+      cart[name] = { qty: val, unit: unit };
+      refreshCartUI();
+    }
+
+    function updateQty(name, delta, unit) {
+      const cur = cart[name] ? cart[name].qty : 0;
+      let next = cur + delta;
+      if (next < 0) next = 0;
+      if (next === 0) {
+        delete cart[name];
+      } else {
+        cart[name] = { qty: next, unit: unit };
+      }
+      refreshCartUI();
+    }
+
+    function refreshCartUI() {
+      // Re-render เพื่ออัปเดตตัวเลข
+      const name = document.getElementById('customerSelect').value;
+      if (name) {
+        const cust = customers.find(c => c.name === name);
+        if (cust && cust.favorites) renderFavorites(cust.favorites);
+      }
+      filterVegetables();
+
+      // อัปเดตยอดปุ่มข้างล่าง
+      const keys = Object.keys(cart);
+      document.getElementById('cartCount').innerText = keys.length;
+    }
+
+    function filterVegetables() {
+      const kw = document.getElementById('searchBox').value.trim().toLowerCase();
+      if (!kw) {
+        renderVegetables();
+      } else {
+        const filtered = vegetables.filter(v => v.name.toLowerCase().includes(kw));
+        renderVegetables(filtered);
+      }
+    }
+
+    // ส่งออเดอร์
+    async function submitOrder() {
+      const customer = document.getElementById('customerSelect').value;
+      if (!customer) {
+        alert("กรุณาเลือกร้านค้าของคุณก่อนครับ");
+        return;
+      }
+
+      const items = Object.keys(cart).map(name => ({
+        name: name,
+        qty: cart[name].qty,
+        unit: cart[name].unit
+      }));
+      const addOn = document.getElementById('addonText').value.trim();
+
+      if (items.length === 0 && !addOn) {
+        alert("กรุณาเลือกผักหรือพิมพ์ของพิเศษอย่างน้อย 1 รายการครับ");
+        return;
+      }
+
+      const btn = document.getElementById('btnSubmit');
+      btn.disabled = true;
+      btn.innerHTML = '<span>กำลังส่งข้อมูล...</span>';
+
+      try {
+        const payload = {
+          action: "createOrder",
+          orderDate: marketDate,
+          customerName: customer,
+          items: items,
+          addOnNote: addOn
+        };
+
+        const res = await fetch(APPS_SCRIPT_URL, {
+          method: "POST",
+          headers: { "Content-Type": "text/plain;charset=utf-8" },
+          body: JSON.stringify(payload)
+        });
+        const result = await res.json();
+
+        if (result.success) {
+          alert("✅ ส่งออเดอร์เรียบร้อยแล้ว ขอบคุณครับ!");
+          cart = {};
+          document.getElementById('addonText').value = "";
+          refreshCartUI();
+        } else {
+          alert("เกิดข้อผิดพลาด: " + result.error);
+        }
+      } catch (err) {
+        alert("ส่งข้อมูลไม่สำเร็จ กรุณาลองใหม่อีกครั้ง");
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<span>ยืนยันส่งออเดอร์</span>';
+      }
+    }
+
+    // ดูประวัติย้อนหลัง
+    async function toggleHistoryModal(show) {
+      const modal = document.getElementById('historyModal');
+      const customer = document.getElementById('customerSelect').value;
+
+      if (show) {
+        if (!customer) {
+          alert("กรุณาเลือกร้านของคุณก่อนเพื่อดูประวัติครับ");
+          return;
+        }
+        modal.classList.remove('hidden');
+        const box = document.getElementById('historyContent');
+        box.innerHTML = '<p class="text-center text-gray-400 py-6">กำลังโหลดข้อมูลย้อนหลัง...</p>';
+
+        try {
+          const res = await fetch(`${APPS_SCRIPT_URL}?action=getCustomerHistory&customerName=${encodeURIComponent(customer)}`);
+          const data = await res.json();
+          if (data.success && data.orders.length > 0) {
+            box.innerHTML = data.orders.map(o => `
+              <div class="bg-gray-50 border border-gray-200 p-3 rounded-xl space-y-1">
+                <div class="flex justify-between items-center text-xs text-gray-500 border-b pb-1">
+                  <span class="font-bold text-gray-700">รอบวันที่: ${o.orderDate}</span>
+                  <span class="px-2 py-0.5 rounded-full ${o.status === 'จัดแล้ว' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}">${o.status}</span>
+                </div>
+                <div class="pt-1">
+                  ${o.items.map(it => `<div class="flex justify-between text-gray-700"><span>• ${it.name}</span><span class="font-semibold">${it.qty}${it.unit}</span></div>`).join('')}
+                </div>
+                ${o.addOnNote ? `<div class="mt-1 p-1.5 bg-yellow-50 rounded text-xs text-amber-800"><b>สั่งเพิ่ม:</b> ${o.addOnNote}</div>` : ''}
+              </div>
+            `).join('');
+          } else {
+            box.innerHTML = '<p class="text-center text-gray-400 py-6">ไม่มีประวัติการสั่งซื้อย้อนหลัง</p>';
+          }
+        } catch (e) {
+          box.innerHTML = '<p class="text-center text-red-400 py-6">โหลดประวัติไม่สำเร็จ</p>';
+        }
+      } else {
+        modal.classList.add('hidden');
+      }
+    }
+
+    window.onload = init;
+  </script>
+</body>
+</html>
