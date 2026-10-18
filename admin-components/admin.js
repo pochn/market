@@ -306,13 +306,15 @@
     const phoneInput = document.getElementById("newShopPhone");
     const name = nameInput.value.trim();
     if (!name) return alert("กรุณากรอกชื่อร้านค้า");
+    const contact = phoneInput.value.trim();
+    if (!window.confirm(`ยืนยันเพิ่มร้านค้า "${name}"${contact ? ` เบอร์ ${contact}` : ""} และสร้างลิงก์สำหรับร้านนี้หรือไม่?`)) return;
     const button = document.getElementById("createShopButton");
     button.disabled = true;
     try {
       let id = generateShopId();
       while (state.allShops.some(shop => String(shop.id) === id)) id = generateShopId();
-      await postAction({ action: "registerShop", shopId: id, shopName: name, contact: phoneInput.value.trim() });
-      state.allShops.push({ id, name, contact: phoneInput.value.trim() });
+      await postAction({ action: "registerShop", shopId: id, shopName: name, contact });
+      state.allShops.push({ id, name, contact });
       renderShops();
       nameInput.value = "";
       phoneInput.value = "";
@@ -354,6 +356,10 @@
     const name = document.getElementById("editShopName").value.trim();
     const contact = document.getElementById("editShopPhone").value.trim();
     if (!name) return alert("กรุณากรอกชื่อร้านค้า");
+    const currentShop = state.allShops.find(item => String(item.id) === id);
+    if (!window.confirm(
+      `ยืนยันแก้ไขข้อมูลร้านค้า?\n\nชื่อเดิม: ${currentShop ? currentShop.name : ""}\nชื่อใหม่: ${name}\nเบอร์โทรใหม่: ${contact || "ไม่ระบุ"}`
+    )) return;
     const button = document.getElementById("saveShopButton");
     button.disabled = true;
     try {
@@ -403,6 +409,7 @@
     const item = order && order.items && order.items[itemIndex];
     const qty = Number(document.getElementById("newQtyInput").value);
     if (!item || !Number.isFinite(qty) || qty < 0) return alert("กรุณาระบุจำนวนตั้งแต่ 0 ขึ้นไป");
+    if (!window.confirm(`ยืนยันแก้ไขจำนวน "${item.name}" ของร้าน ${order.customerName}?\n\nจำนวนเดิม: ${item.qty} ${item.unit}\nจำนวนใหม่: ${qty} ${item.unit}`)) return;
     const originalQty = item.originalQty !== undefined ? item.originalQty : item.qty;
     const previousQty = item.qty;
     const hadOriginalQty = item.originalQty !== undefined;
@@ -451,6 +458,10 @@
     const matchingOrders = state.currentOrders.filter(item => item.customerName === order.customerName);
     const previousStatuses = matchingOrders.map(item => item.paymentStatus || "ค้างชำระ");
     const paymentStatus = matchingOrders.every(item => item.paymentStatus === "ชำระแล้ว") ? "ค้างชำระ" : "ชำระแล้ว";
+    const amount = matchingOrders.reduce((sum, item) => sum + orderTotal(item), 0);
+    if (!window.confirm(
+      `ยืนยันเปลี่ยนสถานะการชำระเงินของร้าน "${order.customerName}" เป็น "${paymentStatus}"?\n\nยอดรวม ${formatMoney(amount)} บาท`
+    )) return;
     matchingOrders.forEach(item => { item.paymentStatus = paymentStatus; });
     renderPackingTab();
     renderFinanceSummary();
@@ -492,6 +503,8 @@
   async function saveNewItem() {
     const name = document.getElementById("newItemName").value.trim();
     if (!name) return alert("กรุณากรอกชื่อสินค้า");
+    const unit = document.getElementById("newItemUnit").value;
+    if (!window.confirm(`ยืนยันเพิ่มสินค้า "${name}" หน่วย ${unit}${state.selectedImageBase64 ? " พร้อมรูปภาพ" : " โดยไม่มีรูปภาพ"} หรือไม่?`)) return;
     const button = document.getElementById("saveItemButton");
     const status = document.getElementById("itemStatus");
     button.disabled = true;
@@ -500,7 +513,7 @@
       const result = await postAction({
         action: "addNewItem",
         name,
-        unit: document.getElementById("newItemUnit").value,
+        unit,
         base64Image: state.selectedImageBase64,
         driveFolderId: config.DRIVE_FOLDER_ID
       });
@@ -602,9 +615,32 @@
         renderFinanceSummary();
       }
     });
+    document.getElementById("adminApp").addEventListener("focusin", event => {
+      if (event.target.matches('[data-action="unit-price"]')) {
+        event.target.dataset.confirmOriginal = event.target.value;
+      }
+    });
     document.getElementById("adminApp").addEventListener("change", async event => {
       if (event.target.matches('[data-action="unit-price"]')) {
-        await saveOrderPricing(event.target.dataset.order);
+        const input = event.target;
+        const order = state.currentOrders.find(item => String(item.orderId) === input.dataset.order);
+        const item = order && order.items[Number(input.dataset.index)];
+        const previousValue = input.dataset.confirmOriginal ?? "";
+        if (!item) return;
+        if (input.value === previousValue) return;
+        if (!window.confirm(
+          `ยืนยันแก้ไขราคาต่อหน่วยของ "${item.name}" ร้าน ${order.customerName}?\n\nราคาเดิม: ${previousValue || "ยังไม่ระบุ"} บาท/${item.unit}\nราคาใหม่: ${input.value || "0"} บาท/${item.unit}`
+        )) {
+          input.value = previousValue;
+          const priceKey = `${order.customerName}_${item.name}`;
+          if (previousValue === "") delete state.customPrices[priceKey];
+          else state.customPrices[priceKey] = Number(previousValue);
+          localStorage.setItem("market_custom_prices", JSON.stringify(state.customPrices));
+          input.dispatchEvent(new Event("input", { bubbles: true }));
+          return;
+        }
+        input.dataset.confirmOriginal = input.value;
+        await saveOrderPricing(input.dataset.order);
         return;
       }
       if (event.target.id === "itemImageInput" && event.target.files[0]) {
