@@ -2,110 +2,230 @@
 <html lang="th">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ตรวจรับและสรุปยอดตลาดเช้า - แม่ทิพย์</title>
-  <!-- Tailwind CSS CDN -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>แดชบอร์ดตลาดเช้า - แม่ทิพย์</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>
-    body { font-family: 'Prompt', sans-serif; }
-    .checked-item { opacity: 0.45; text-decoration: line-through; }
+    body { font-family: 'Prompt', sans-serif; -webkit-tap-highlight-color: transparent; }
+    .checked-box { opacity: 0.35; filter: grayscale(1); }
   </style>
 </head>
-<body class="bg-gray-100 min-h-screen pb-12 text-gray-800">
+<body class="bg-gray-100 min-h-screen pb-16 text-gray-800">
 
-  <!-- ตั้งค่า URL ของ Apps Script -->
   <script>
     const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbw7aUiCWlwbjK3FZicySMnUVOrhKuKiqP_rVG13dMxGahsGg2sjTevZNlbThSCsr4akQA/exec";
   </script>
 
   <!-- Top Navbar -->
-  <header class="bg-emerald-800 text-white p-4 shadow sticky top-0 z-40">
-    <div class="max-w-xl mx-auto flex flex-col gap-2">
+  <header class="bg-emerald-800 text-white p-4 shadow-md sticky top-0 z-40">
+    <div class="max-w-xl mx-auto flex flex-col gap-2.5">
       <div class="flex justify-between items-center">
         <div>
-          <h1 class="text-xl font-bold">🛒 แดชบอร์ดตลาดเช้า (แม่ทิพย์)</h1>
-          <p class="text-xs text-emerald-200">ตรวจสอบรายการและเช็คยอดซื้อของ</p>
+          <h1 class="text-xl font-extrabold tracking-tight">🛒 แดชบอร์ดตลาดเช้า (แม่ทิพย์)</h1>
+          <p class="text-xs text-emerald-200" id="clockText">อัปเดตข้อมูลอัตโนมัติ</p>
         </div>
-        <button onclick="loadOrders()" class="bg-emerald-700 hover:bg-emerald-600 px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1 shadow">
-          🔄 รีเฟรช
+        <button onclick="loadOrders()" class="bg-emerald-700 active:bg-emerald-900 border border-emerald-500 px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow">
+          <span>🔄 รีเฟรช</span>
         </button>
       </div>
 
-      <!-- แถบเลือกรอบวันที่ (ดูย้อนหลังได้) -->
-      <div class="flex items-center gap-2 bg-emerald-900/60 p-2 rounded-lg text-sm">
-        <span class="text-xs text-emerald-200">รอบตลาด:</span>
-        <input type="date" id="selectedDate" onchange="loadOrders()" class="bg-white text-gray-800 px-2 py-1 rounded text-sm font-semibold flex-1 focus:outline-none">
-        <button onclick="setToday()" class="bg-emerald-700 px-2.5 py-1 rounded text-xs font-bold">วันนี้</button>
+      <!-- แถบเลือกรอบวันที่ -->
+      <div class="flex items-center gap-2 bg-emerald-900/70 p-2 rounded-xl text-sm border border-emerald-700">
+        <span class="text-xs text-emerald-200 font-semibold whitespace-nowrap">รอบวันที่:</span>
+        <input type="date" id="selectedDate" onchange="loadOrders()" class="bg-white text-gray-800 px-3 py-1 rounded-lg text-sm font-bold flex-1 focus:outline-none">
+        <button onclick="setToday()" class="bg-emerald-600 active:bg-emerald-700 px-3 py-1 rounded-lg text-xs font-bold text-white shadow">วันนี้</button>
       </div>
     </div>
   </header>
 
   <main class="max-w-xl mx-auto p-4 space-y-4">
 
-    <!-- สรุปตัวเลขสถิติ -->
+    <!-- แถบเครื่องมือ: สร้างลิงก์ร้านค้า และ ปุ่มเพิ่มสินค้าใหม่ -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <!-- 1. กล่องสร้างลิงก์ -->
+      <div class="bg-white p-3.5 rounded-2xl shadow-sm border border-emerald-200 space-y-2">
+        <div class="flex justify-between items-center">
+          <span class="font-extrabold text-gray-800 text-xs">🔗 ส่งลิงก์ให้ร้านใหม่</span>
+        </div>
+        <div class="flex gap-2">
+          <input type="text" id="adminNewShopInput" placeholder="พิมพ์ชื่อร้าน..." class="flex-1 p-2 bg-gray-50 border rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500">
+          <button onclick="createAndCopyShopLink()" class="bg-emerald-600 active:bg-emerald-700 text-white px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap shadow">
+            ก๊อปปี้
+          </button>
+        </div>
+        <p id="adminCopyStatus" class="text-[11px] text-emerald-600 font-bold hidden">✓ คัดลอกลิงก์แล้ว ส่งต่อใน LINE ได้เลย</p>
+      </div>
+
+      <!-- 2. ปุ่มเปิดฟอร์มถ่ายรูปเพิ่มผัก -->
+      <div class="bg-emerald-50 border border-emerald-200 p-3.5 rounded-2xl shadow-sm flex flex-col justify-between">
+        <div>
+          <span class="font-extrabold text-emerald-900 text-xs">📸 ถ่ายรูปเพิ่มผักใหม่</span>
+          <p class="text-[11px] text-emerald-700 mt-0.5">ถ่ายรูปมะนาว/ผักใหม่เข้าหน้าร้านทันที</p>
+        </div>
+        <button onclick="openAddItemModal()" class="mt-2 w-full bg-emerald-700 active:bg-emerald-800 text-white py-2 rounded-xl text-xs font-bold shadow flex items-center justify-center gap-1.5">
+          <span>+ ถ่ายรูป / เพิ่มสินค้า</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- สถิติภาพรวม -->
     <div class="grid grid-cols-2 gap-3">
-      <div class="bg-white p-3 rounded-xl border border-gray-200 shadow-sm text-center">
-        <p class="text-xs text-gray-500">จำนวนร้านที่สั่ง</p>
-        <p class="text-2xl font-bold text-emerald-700" id="totalShopCount">0</p>
+      <div class="bg-white p-3 rounded-2xl border border-gray-200 shadow-sm text-center">
+        <p class="text-xs font-semibold text-gray-500">ร้านค้าที่สั่งทั้งหมด</p>
+        <p class="text-2xl font-extrabold text-emerald-700 mt-0.5"><span id="statTotalShops">0</span> <span class="text-xs font-normal text-gray-600">ร้าน</span></p>
       </div>
-      <div class="bg-white p-3 rounded-xl border border-gray-200 shadow-sm text-center">
-        <p class="text-xs text-gray-500">จัดของเสร็จแล้ว</p>
-        <p class="text-2xl font-bold text-blue-600" id="completedShopCount">0</p>
+      <div class="bg-white p-3 rounded-2xl border border-gray-200 shadow-sm text-center">
+        <p class="text-xs font-semibold text-gray-500">ได้ของครบแล้ว</p>
+        <p class="text-2xl font-extrabold text-blue-600 mt-0.5"><span id="statCompletedShops">0</span> <span class="text-xs font-normal text-gray-600">ร้าน</span></p>
       </div>
     </div>
 
-    <!-- แถบสลับแท็บ (Tab Navigation) -->
-    <div class="flex bg-gray-200 p-1 rounded-xl font-semibold text-sm">
-      <button id="tabSummaryBtn" onclick="switchTab('summary')" class="flex-1 py-2 rounded-lg bg-white text-emerald-800 shadow transition">
-        🥦 รวมยอดซื้อตลาด
+    <!-- แถบสลับ 3 แท็บ -->
+    <div class="flex bg-gray-200/80 p-1.5 rounded-2xl font-bold text-xs sm:text-sm shadow-inner">
+      <button id="tabSummaryBtn" onclick="switchTab('summary')" class="flex-1 py-2.5 rounded-xl bg-white text-emerald-800 shadow transition flex justify-center items-center gap-1">
+        <span>🥦 ยอดซื้อตลาด</span>
       </button>
-      <button id="tabPackingBtn" onclick="switchTab('packing')" class="flex-1 py-2 rounded-lg text-gray-600 transition">
-        📦 แยกจัดตามร้าน
+      <button id="tabPackingBtn" onclick="switchTab('packing')" class="flex-1 py-2.5 rounded-xl text-gray-500 transition flex justify-center items-center gap-1">
+        <span>📦 แยกจัดตามร้าน</span>
+      </button>
+      <button id="tabShopsBtn" onclick="switchTab('shops')" class="flex-1 py-2.5 rounded-xl text-gray-500 transition flex justify-center items-center gap-1">
+        <span>🏪 ลิงก์ร้านค้า</span>
       </button>
     </div>
 
-    <!-- แท็บ 1: รวมยอดซื้อของที่ตลาด -->
+    <!-- แท็บ 1: รวมยอดซื้อตลาด -->
     <section id="summaryTab" class="space-y-3">
-      <div class="bg-amber-50 border border-amber-200 p-2.5 rounded-lg text-xs text-amber-800 flex items-center gap-2">
-        <span>💡 แตะที่ช่องสี่เหลี่ยมเพื่อติ๊กถูกเมื่อซื้อของใส่รถแล้ว</span>
+      <div class="bg-emerald-50 border border-emerald-200 p-2.5 rounded-xl text-xs text-emerald-800 font-medium flex items-center gap-2">
+        <span>💡 แตะที่แถวเพื่อ "ติ๊กถูก" เมื่อหยิบของใส่รถเสร็จแล้ว</span>
       </div>
 
-      <!-- รายการของพิเศษนอกเมนู (Add-on) -->
-      <div id="addonSection" class="hidden bg-yellow-50 border border-yellow-300 p-3 rounded-xl">
-        <h3 class="font-bold text-amber-900 text-sm mb-2 flex items-center gap-1">
+      <div id="addonSection" class="hidden bg-amber-50 border-2 border-amber-300 p-4 rounded-2xl space-y-2">
+        <h3 class="font-extrabold text-amber-900 text-sm flex items-center gap-1.5">
           ⚠️ ของพิเศษนอกเมนู (Add-on ที่ต้องซื้อเพิ่ม):
         </h3>
         <div id="addonList" class="space-y-1.5 text-sm"></div>
       </div>
 
-      <!-- รายการผักรวม -->
-      <div id="summaryList" class="space-y-2">
-        <p class="text-center text-gray-400 py-8 text-sm">กำลังโหลดข้อมูล...</p>
+      <div id="summaryList" class="space-y-2.5">
+        <div class="text-center py-12 text-gray-400 text-sm">กำลังโหลดข้อมูล...</div>
       </div>
     </section>
 
-    <!-- แท็บ 2: แยกจัดของตามร้านลูกค้า -->
+    <!-- แท็บ 2: แยกจัดตามร้าน -->
     <section id="packingTab" class="hidden space-y-3">
-      <div id="customerList" class="space-y-3">
-        <p class="text-center text-gray-400 py-8 text-sm">กำลังโหลดข้อมูล...</p>
+      <div class="bg-blue-50 border border-blue-200 p-2.5 rounded-xl text-xs text-blue-800 font-medium flex items-center gap-2">
+        <span>💡 แตะปุ่ม ✏️ เพื่อปรับจำนวนกรณีของไม่พอ ระบบจะแจ้งลูกค้าอัตโนมัติ</span>
+      </div>
+
+      <div id="customerCardsContainer" class="space-y-3">
+        <div class="text-center py-12 text-gray-400 text-sm">กำลังโหลดข้อมูล...</div>
+      </div>
+    </section>
+
+    <!-- แท็บ 3: รายชื่อร้านค้าและลิงก์ประจำร้าน -->
+    <section id="shopsTab" class="hidden space-y-3">
+      <div class="bg-emerald-50 border border-emerald-200 p-3 rounded-2xl text-xs text-emerald-800 font-medium flex items-center justify-between">
+        <span>💡 แตะปุ่มเพื่อคัดลอกลิงก์ส่ง LINE ให้ลูกค้าได้ทันที</span>
+      </div>
+
+      <input type="text" id="searchShopInput" oninput="filterShopsList()" placeholder="🔍 ค้นหาชื่อร้านค้า..." class="w-full p-3 bg-white border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none shadow-sm">
+
+      <div id="shopsListContainer" class="space-y-2.5">
+        <div class="text-center py-10 text-gray-400 text-sm">กำลังโหลดรายชื่อร้านค้า...</div>
       </div>
     </section>
 
   </main>
 
+  <!-- Modal ถ่ายรูป/เพิ่มสินค้าใหม่ -->
+  <div id="addItemModal" class="fixed inset-0 bg-black/60 z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-white w-full max-w-sm rounded-3xl p-5 shadow-2xl space-y-4">
+      <div class="flex justify-between items-center border-b pb-2">
+        <h3 class="font-extrabold text-base text-gray-900">📸 ถ่ายรูป / เพิ่มสินค้าใหม่</h3>
+        <button onclick="closeAddItemModal()" class="text-gray-400 hover:text-gray-600 text-xl font-bold">&times;</button>
+      </div>
+
+      <div class="flex flex-col items-center">
+        <div id="imagePreviewBox" class="w-32 h-32 rounded-2xl bg-gray-100 border-2 border-dashed border-gray-300 flex items-center justify-center overflow-hidden mb-2 cursor-pointer relative" onclick="document.getElementById('cameraInput').click()">
+          <span id="previewPlaceholder" class="text-gray-400 text-xs text-center px-2">แตะเพื่อถ่ายรูป หรือเลือกรูป</span>
+          <img id="previewImg" class="w-full h-full object-cover hidden" alt="รูปผัก">
+        </div>
+        <input type="file" id="cameraInput" accept="image/*" capture="environment" onchange="handleImageSelection(event)" class="hidden">
+        <button onclick="document.getElementById('cameraInput').click()" class="text-xs text-emerald-700 font-bold underline">
+          📷 เปิดกล้องถ่ายรูป
+        </button>
+      </div>
+
+      <div class="space-y-3 text-sm">
+        <div>
+          <label class="block text-xs font-bold text-gray-700 mb-1">ชื่อสินค้า / ชื่อผัก:</label>
+          <input type="text" id="newItemName" placeholder="เช่น มะนาวแป้น, ผักชีใบเลื่อย" class="w-full p-2.5 border rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none">
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-gray-700 mb-1">หน่วยนับ:</label>
+          <select id="newItemUnit" class="w-full p-2.5 border rounded-xl bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-none font-semibold">
+            <option value="กก.">กิโลกรัม (กก.)</option>
+            <option value="ขีด">ขีด</option>
+            <option value="ลูก">ลูก</option>
+            <option value="ถุง">ถุง</option>
+            <option value="มัด">มัด</option>
+            <option value="ห่อ">ห่อ</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="flex gap-2 pt-2 border-t">
+        <button onclick="closeAddItemModal()" class="flex-1 py-3 bg-gray-100 rounded-xl font-bold text-gray-600 text-sm">ยกเลิก</button>
+        <button onclick="saveNewItem()" id="btnSaveNewItem" class="flex-1 py-3 bg-emerald-600 active:bg-emerald-700 text-white rounded-xl font-bold text-sm shadow">
+          บันทึกสินค้า
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal ปรับจำนวนผักกรณีของไม่พอ -->
+  <div id="editQtyModal" class="fixed inset-0 bg-black/60 z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-white w-full max-w-sm rounded-3xl p-5 shadow-2xl space-y-4">
+      <div>
+        <h3 class="font-extrabold text-lg text-gray-900" id="editVegName">ปรับจำนวนผัก</h3>
+        <p class="text-xs text-gray-500" id="editOriginalInfo">ลูกค้าสั่ง: 1 กก.</p>
+      </div>
+
+      <div>
+        <label class="block text-xs font-bold text-gray-600 mb-1">จำนวนที่หาได้จริง:</label>
+        <div class="flex items-center gap-2">
+          <input type="number" step="0.1" id="newQtyInput" class="w-full p-3 border-2 border-emerald-500 rounded-xl font-bold text-xl text-center focus:outline-none">
+          <span class="font-bold text-gray-700" id="editUnitLabel">กก.</span>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-4 gap-2">
+        <button onclick="setEditVal(0)" class="py-2 bg-red-50 text-red-600 border border-red-200 rounded-xl font-bold text-xs">หมด (0)</button>
+        <button onclick="setEditVal(0.5)" class="py-2 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-xl font-bold text-xs">0.5</button>
+        <button onclick="setEditVal(1)" class="py-2 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-xl font-bold text-xs">1</button>
+        <button onclick="setEditVal(2)" class="py-2 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-xl font-bold text-xs">2</button>
+      </div>
+
+      <div class="flex gap-2 pt-2 border-t">
+        <button onclick="closeEditModal()" class="flex-1 py-3 bg-gray-100 rounded-xl font-bold text-gray-600 text-sm">ยกเลิก</button>
+        <button onclick="saveEditedQty()" class="flex-1 py-3 bg-emerald-600 text-white rounded-xl font-bold text-sm shadow">บันทึก</button>
+      </div>
+    </div>
+  </div>
+
   <script>
     let currentOrders = [];
-    let checkedItemsState = {}; // เก็บสถานะของที่ติ๊กซื้อแล้วในเครื่อง
+    let boughtSummarySet = new Set();
+    let packedItemsMap = JSON.parse(localStorage.getItem('market_packed_items') || '{}');
+    let editingContext = null;
+    let selectedImageBase64 = "";
+    let allShops = [];
 
-    // ตั้งค่าเริ่มต้นวันที่
     function initDate() {
       const now = new Date();
       const target = new Date();
-      // ถ้าเปิดหลังเที่ยงวัน แสดงรอบตลาดเช้าพรุ่งนี้
-      if (now.getHours() >= 12) {
-        target.setDate(now.getDate() + 1);
-      }
+      if (now.getHours() >= 12) target.setDate(now.getDate() + 1);
       const yyyy = target.getFullYear();
       const mm = String(target.getMonth() + 1).padStart(2, '0');
       const dd = String(target.getDate()).padStart(2, '0');
@@ -117,13 +237,12 @@
       loadOrders();
     }
 
-    // โหลดออเดอร์ตามวันที่เลือก
     async function loadOrders() {
       const dateVal = document.getElementById('selectedDate').value;
       if (!dateVal) return;
 
-      document.getElementById('summaryList').innerHTML = '<p class="text-center text-gray-400 py-8 text-sm">กำลังดึงข้อมูล...</p>';
-      document.getElementById('customerList').innerHTML = '<p class="text-center text-gray-400 py-8 text-sm">กำลังดึงข้อมูล...</p>';
+      document.getElementById('summaryList').innerHTML = '<div class="text-center py-10 text-gray-400 text-sm">กำลังโหลดข้อมูล...</div>';
+      document.getElementById('customerCardsContainer').innerHTML = '<div class="text-center py-10 text-gray-400 text-sm">กำลังโหลดข้อมูล...</div>';
 
       try {
         const res = await fetch(`${APPS_SCRIPT_URL}?action=getAdminOrders&date=${dateVal}`);
@@ -131,7 +250,7 @@
 
         if (data.success) {
           currentOrders = data.orders;
-          renderAll();
+          renderDashboard();
         } else {
           alert("ไม่สามารถดึงข้อมูลได้: " + data.error);
         }
@@ -140,31 +259,23 @@
       }
     }
 
-    function renderAll() {
-      // 1. อัปเดตตัวเลขสถิติ
-      document.getElementById('totalShopCount').innerText = currentOrders.length;
-      const completed = currentOrders.filter(o => o.status === 'จัดแล้ว').length;
-      document.getElementById('completedShopCount').innerText = completed;
-
+    function renderDashboard() {
       renderSummaryTab();
       renderPackingTab();
     }
 
-    // 1. เรนเดอร์แท็บสรุปยอดรวมซื้อผัก
     function renderSummaryTab() {
       const summaryList = document.getElementById('summaryList');
       const addonSection = document.getElementById('addonSection');
       const addonList = document.getElementById('addonList');
 
       if (currentOrders.length === 0) {
-        summaryList.innerHTML = '<p class="text-center text-gray-400 py-8 text-sm">ไม่มีออเดอร์ในรอบวันนี้</p>';
+        summaryList.innerHTML = '<div class="text-center py-12 text-gray-400 text-sm bg-white rounded-2xl border border-gray-200 p-6">ไม่มีรายการสั่งซื้อสำหรับรอบวันนี้</div>';
         addonSection.classList.add('hidden');
         return;
       }
 
-      // รวบรวม Add-on
       const addons = [];
-      // คำนวณผลรวมผัก: { "ผักชี": { qty: 3, unit: "กิโลกรัม", shops: ["ร้าน A (1)", "ร้าน B (2)"] } }
       const vegTotals = {};
 
       currentOrders.forEach(o => {
@@ -172,142 +283,479 @@
           addons.push({ shop: o.customerName, note: o.addOnNote });
         }
 
-        o.items.forEach(it => {
-          const key = `${it.name}_${it.unit}`;
-          if (!vegTotals[key]) {
-            vegTotals[key] = { name: it.name, unit: it.unit, totalQty: 0, shops: [] };
-          }
-          vegTotals[key].totalQty += Number(it.qty);
-          vegTotals[key].shops.push(`${o.customerName} (${it.qty})`);
-        });
+        if (o.items && Array.isArray(o.items)) {
+          o.items.forEach(it => {
+            const key = `${it.name}_${it.unit}`;
+            if (!vegTotals[key]) {
+              vegTotals[key] = { name: it.name, unit: it.unit, totalQty: 0, shops: [] };
+            }
+            const q = Number(it.qty) || 0;
+            vegTotals[key].totalQty += q;
+            vegTotals[key].shops.push(`${o.customerName} (${q})`);
+          });
+        }
       });
 
-      // แสดงรายการ Add-on
       if (addons.length > 0) {
         addonSection.classList.remove('hidden');
         addonList.innerHTML = addons.map(a => `
-          <div class="bg-white/80 p-2 rounded border border-amber-200">
-            <span class="font-bold text-gray-800">🏪 ${a.shop}:</span> 
-            <span class="text-amber-900">${a.note}</span>
+          <div class="bg-white/90 p-2.5 rounded-xl border border-amber-200 text-xs text-amber-950 flex flex-col gap-0.5">
+            <span class="font-extrabold text-amber-900">🏪 ${a.shop}:</span>
+            <span class="text-sm font-semibold">${a.note}</span>
           </div>
         `).join('');
       } else {
         addonSection.classList.add('hidden');
       }
 
-      // แสดงผลรายการรวมผัก
       const keys = Object.keys(vegTotals);
       if (keys.length === 0) {
-        summaryList.innerHTML = '<p class="text-center text-gray-400 py-8 text-sm">ไม่มีรายการผักมาตรฐาน</p>';
+        summaryList.innerHTML = '<div class="text-center py-8 text-gray-400 text-sm">ไม่มีรายการผัก</div>';
         return;
       }
 
       summaryList.innerHTML = keys.map(k => {
         const item = vegTotals[k];
-        const isChecked = checkedItemsState[k] ? 'checked' : '';
-        const itemClass = checkedItemsState[k] ? 'checked-item bg-gray-50 border-gray-200' : 'bg-white border-gray-200';
+        const isBought = boughtSummarySet.has(k);
 
         return `
-          <div id="card_${k}" class="p-3 rounded-xl border flex items-start gap-3 shadow-sm transition ${itemClass}">
-            <input type="checkbox" onchange="toggleCheckItem('${k}')" ${isChecked} class="w-6 h-6 mt-1 rounded text-emerald-600 focus:ring-emerald-500 border-gray-300 cursor-pointer">
-            <div class="flex-1 cursor-pointer" onclick="document.querySelector('#card_${k} input').click()">
-              <div class="flex justify-between items-baseline">
-                <span class="font-bold text-lg text-gray-800">${item.name}</span>
-                <span class="text-xl font-extrabold text-emerald-700">${item.totalQty} <span class="text-sm font-normal text-gray-600">${item.unit}</span></span>
+          <div onclick="toggleBoughtSummary('${k}')" class="p-3.5 rounded-2xl border-2 transition-all cursor-pointer flex items-center justify-between gap-3 shadow-sm ${isBought ? 'checked-box bg-gray-50 border-gray-200' : 'bg-white border-gray-200 active:scale-[0.99]'}">
+            <div class="flex items-center gap-3">
+              <input type="checkbox" ${isBought ? 'checked' : ''} class="w-6 h-6 rounded text-emerald-600 focus:ring-0 border-gray-300 pointer-events-none">
+              <div>
+                <h4 class="font-extrabold text-lg text-gray-900 leading-snug ${isBought ? 'line-through text-gray-400' : ''}">${item.name}</h4>
+                <p class="text-xs text-gray-500 mt-0.5"><span class="font-semibold text-gray-600">ร้านที่สั่ง:</span> ${item.shops.join(', ')}</p>
               </div>
-              <p class="text-xs text-gray-500 mt-1">
-                <span class="font-semibold text-gray-600">ร้านที่สั่ง:</span> ${item.shops.join(', ')}
-              </p>
+            </div>
+            <div class="text-right whitespace-nowrap pl-2">
+              <span class="text-2xl font-black text-emerald-700 ${isBought ? 'line-through text-gray-400' : ''}">${item.totalQty}</span>
+              <span class="text-xs font-semibold text-gray-600 block">${item.unit}</span>
             </div>
           </div>
         `;
       }).join('');
     }
 
-    function toggleCheckItem(key) {
-      checkedItemsState[key] = !checkedItemsState[key];
+    function toggleBoughtSummary(key) {
+      if (boughtSummarySet.has(key)) boughtSummarySet.delete(key);
+      else boughtSummarySet.add(key);
       renderSummaryTab();
     }
 
-    // 2. เรนเดอร์แท็บแยกจัดตามร้าน
     function renderPackingTab() {
-      const container = document.getElementById('customerList');
+      const container = document.getElementById('customerCardsContainer');
       if (currentOrders.length === 0) {
-        container.innerHTML = '<p class="text-center text-gray-400 py-8 text-sm">ไม่มีออเดอร์ในรอบวันนี้</p>';
+        container.innerHTML = '<div class="text-center py-12 text-gray-400 text-sm bg-white rounded-2xl border border-gray-200 p-6">ไม่มีรายการสั่งซื้อสำหรับรอบวันนี้</div>';
+        document.getElementById('statTotalShops').innerText = 0;
+        document.getElementById('statCompletedShops').innerText = 0;
         return;
       }
 
-      container.innerHTML = currentOrders.map(o => {
-        const isDone = o.status === 'จัดแล้ว';
+      document.getElementById('statTotalShops').innerText = currentOrders.length;
+      let completedShopsCount = 0;
+
+      const processedOrders = currentOrders.map(o => {
+        const totalItems = o.items ? o.items.length : 0;
+        let checkedCount = 0;
+
+        if (o.items) {
+          o.items.forEach((it, idx) => {
+            const key = `${o.orderId}_${idx}`;
+            if (packedItemsMap[key]) checkedCount++;
+          });
+        }
+
+        const remainingCount = totalItems - checkedCount;
+        const isFullyDone = (totalItems > 0 && remainingCount === 0);
+        if (isFullyDone) completedShopsCount++;
+
+        return { ...o, totalItems, checkedCount, remainingCount, isFullyDone };
+      });
+
+      // จัดเรียง: ร้านที่ค้างอยู่บนสุด -> ร้านที่ครบแล้วลงล่างสุด
+      processedOrders.sort((a, b) => {
+        if (a.isFullyDone === b.isFullyDone) return 0;
+        return a.isFullyDone ? 1 : -1;
+      });
+
+      function formatOrderTime(ts) {
+        if (!ts) return "ไม่ระบุเวลา";
+        try {
+          const d = new Date(ts);
+          if (isNaN(d.getTime())) return ts;
+          const hh = String(d.getHours()).padStart(2, '0');
+          const mm = String(d.getMinutes()).padStart(2, '0');
+          const day = d.getDate();
+          const monthNames = ["ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."];
+          const mon = monthNames[d.getMonth()];
+          return `${day} ${mon} ${hh}:${mm} น.`;
+        } catch (e) {
+          return ts;
+        }
+      }
+
+      container.innerHTML = processedOrders.map(o => {
+        const totalItems = o.totalItems;
+        const checkedCount = o.checkedCount;
+        const remainingCount = o.remainingCount;
+        const isFullyDone = o.isFullyDone;
+
+        let statusBadgeHtml = '';
+        let cardBorderClass = 'bg-white border-gray-200';
+
+        if (totalItems === 0) {
+          statusBadgeHtml = `<span class="bg-gray-100 text-gray-600 px-3 py-1.5 rounded-xl text-xs font-bold">ไม่มีรายการ</span>`;
+        } else if (isFullyDone) {
+          cardBorderClass = 'bg-gray-50/80 border-gray-200 opacity-75';
+          statusBadgeHtml = `<span class="bg-emerald-600 text-white px-3 py-1.5 rounded-xl text-xs font-extrabold shadow-sm">✓ ครบแล้ว (${checkedCount}/${totalItems})</span>`;
+        } else if (checkedCount > 0) {
+          cardBorderClass = 'bg-amber-50/40 border-amber-400 shadow-sm';
+          statusBadgeHtml = `<span class="bg-amber-500 text-white px-3.5 py-1.5 rounded-xl text-xs font-extrabold shadow-sm animate-pulse">⚠️ ค้าง ${remainingCount} รายการ (${checkedCount}/${totalItems})</span>`;
+        } else {
+          statusBadgeHtml = `<span class="bg-gray-100 text-gray-600 border border-gray-300 px-3 py-1.5 rounded-xl text-xs font-bold">⏳ ยังไม่ได้ของ (${totalItems})</span>`;
+        }
+
         return `
-          <div class="bg-white rounded-xl border ${isDone ? 'border-emerald-300 bg-emerald-50/30' : 'border-gray-200'} p-4 shadow-sm space-y-3">
-            <div class="flex justify-between items-center border-b pb-2">
+          <div class="rounded-2xl border-2 transition-all p-4 shadow-sm space-y-3 ${cardBorderClass}">
+            <div class="flex justify-between items-start border-b pb-2.5">
               <div>
-                <h3 class="font-bold text-base text-gray-800">🏪 ${o.customerName}</h3>
-                <p class="text-xs text-gray-400">รหัส: ${o.orderId}</p>
-              </div>
-              <button onclick="toggleOrderStatus('${o.orderId}', '${isDone ? 'รอดำเนินการ' : 'จัดแล้ว'}')" class="px-3 py-1.5 rounded-lg text-xs font-bold transition ${isDone ? 'bg-emerald-600 text-white' : 'bg-gray-200 text-gray-700'}">
-                ${isDone ? '✓ จัดแล้ว' : 'ยังไม่จัด'}
-              </button>
-            </div>
-
-            <!-- รายการที่สั่ง -->
-            <div class="space-y-1.5 text-sm">
-              ${o.items.map(it => `
-                <div class="flex justify-between items-center bg-gray-50 px-2 py-1.5 rounded">
-                  <span class="text-gray-700">• ${it.name}</span>
-                  <span class="font-bold text-gray-900">${it.qty}${it.unit}</span>
+                <h3 class="font-extrabold text-lg text-gray-900 leading-tight">🏪 ${o.customerName}</h3>
+                <div class="flex items-center gap-2 mt-0.5">
+                  <span class="text-[11px] text-emerald-800 font-semibold bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                    🕐 สั่ง: ${formatOrderTime(o.timestamp)}
+                  </span>
+                  <span class="text-[11px] text-gray-400">รหัส: ${o.orderId}</span>
                 </div>
-              `).join('')}
+              </div>
+              <div>${statusBadgeHtml}</div>
             </div>
 
-            <!-- Add-on ของร้านนี้ -->
+            <div class="space-y-2">
+              ${o.items.map((it, idx) => {
+                const key = `${o.orderId}_${idx}`;
+                const isChecked = !!packedItemsMap[key];
+                const isEdited = it.originalQty !== undefined && Number(it.originalQty) !== Number(it.qty);
+
+                return `
+                  <div class="p-3 rounded-xl border flex items-center justify-between transition-all ${isChecked ? 'bg-emerald-100/60 border-emerald-400 text-gray-400' : 'bg-gray-50 border-gray-200 text-gray-800 shadow-sm'}">
+                    <div class="flex items-center gap-3 cursor-pointer flex-1" onclick="toggleItemPacked('${o.orderId}',${idx})">
+                      <input type="checkbox" ${isChecked ? 'checked' : ''} class="w-5 h-5 rounded text-emerald-600 border-gray-300 pointer-events-none">
+                      <div>
+                        <span class="font-bold text-base ${isChecked ? 'line-through text-gray-500 font-normal' : ''}">${it.name}</span>${isEdited ? `<div class="text-[11px] text-amber-700 font-semibold">เดิมสั่ง: <span class="line-through">${it.originalQty}</span> ➔ ได้ ${it.qty} ${it.unit}</div>` : ''}
+                      </div>
+                    </div>
+
+                    <div class="flex items-center gap-2">
+                      <span class="font-extrabold text-base ${isEdited ? 'text-amber-700' : (isChecked ? 'line-through text-gray-400 font-normal' : 'text-emerald-800')}">
+                        ${it.qty}${it.unit}
+                      </span>
+                      <button onclick="openEditModal('${o.orderId}',${idx})" class="p-1.5 bg-white border border-gray-300 rounded-lg text-gray-500 hover:text-emerald-700 shadow-xs active:scale-95" title="ปรับจำนวน">
+                        ✏️
+                      </button>
+                    </div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+
             ${o.addOnNote ? `
-              <div class="p-2 bg-yellow-50 rounded border border-yellow-200 text-xs text-amber-900">
-                <span class="font-bold">📝 สั่งพิเศษ:</span> ${o.addOnNote}
+              <div class="p-2.5 bg-amber-50 rounded-xl border border-amber-200 text-xs text-amber-950 font-medium">
+                <span class="font-bold text-amber-900">📝 สั่งพิเศษ:</span> ${o.addOnNote}
               </div>
             ` : ''}
           </div>
         `;
       }).join('');
+
+      document.getElementById('statCompletedShops').innerText = completedShopsCount;
     }
 
-    // อัปเดตสถานะออเดอร์กลับไปที่ Sheets
-    async function toggleOrderStatus(orderId, nextStatus) {
-      // Optimistic update ในหน้าจอ
-      const target = currentOrders.find(o => o.orderId === orderId);
-      if (target) target.status = nextStatus;
-      renderAll();
+    function toggleItemPacked(orderId, itemIndex) {
+      const key = `${orderId}_${itemIndex}`;
+      if (packedItemsMap[key]) delete packedItemsMap[key];
+      else packedItemsMap[key] = true;
+      localStorage.setItem('market_packed_items', JSON.stringify(packedItemsMap));
+      renderPackingTab();
+    }
+
+    // Modal Edit Qty
+    function openEditModal(orderId, itemIndex) {
+      const order = currentOrders.find(o => o.orderId === orderId);
+      if (!order || !order.items[itemIndex]) return;
+
+      const item = order.items[itemIndex];
+      editingContext = { orderId, itemIndex };
+
+      document.getElementById('editVegName').innerText = `ปรับจำนวน: ${item.name}`;
+      const original = item.originalQty !== undefined ? item.originalQty : item.qty;
+      document.getElementById('editOriginalInfo').innerText = `ลูกค้าสั่งเข้ามา: ${original} ${item.unit}`;
+      document.getElementById('editUnitLabel').innerText = item.unit;
+      document.getElementById('newQtyInput').value = item.qty;
+
+      document.getElementById('editQtyModal').classList.remove('hidden');
+    }
+
+    function setEditVal(val) {
+      document.getElementById('newQtyInput').value = val;
+    }
+
+    function closeEditModal() {
+      document.getElementById('editQtyModal').classList.add('hidden');
+      editingContext = null;
+    }
+
+    async function saveEditedQty() {
+      if (!editingContext) return;
+      const { orderId, itemIndex } = editingContext;
+      const order = currentOrders.find(o => o.orderId === orderId);
+      if (!order) return;
+
+      const newQty = parseFloat(document.getElementById('newQtyInput').value) || 0;
+      const item = order.items[itemIndex];
+
+      if (item.originalQty === undefined) item.originalQty = item.qty;
+      item.qty = newQty;
+
+      closeEditModal();
+      renderDashboard();
 
       try {
         await fetch(APPS_SCRIPT_URL, {
           method: "POST",
           headers: { "Content-Type": "text/plain;charset=utf-8" },
-          body: JSON.stringify({ action: "updateStatus", orderId: orderId, status: nextStatus })
+          body: JSON.stringify({
+            action: "updateOrderItems",
+            orderId: orderId,
+            items: order.items
+          })
         });
       } catch (e) {
-        console.error("อัปเดตสถานะไม่สำเร็จ", e);
+        console.error("บันทึกยอดแก้ไขไม่สำเร็จ", e);
       }
     }
 
-    // สลับแท็บ
-    function switchTab(tab) {
-      if (tab === 'summary') {
-        document.getElementById('summaryTab').classList.remove('hidden');
-        document.getElementById('packingTab').classList.add('hidden');
-        document.getElementById('tabSummaryBtn').className = "flex-1 py-2 rounded-lg bg-white text-emerald-800 shadow transition";
-        document.getElementById('tabPackingBtn').className = "flex-1 py-2 rounded-lg text-gray-600 transition";
+    // Modal Add Item & Image Processing
+    function openAddItemModal() {
+      selectedImageBase64 = "";
+      document.getElementById('newItemName').value = "";
+      document.getElementById('newItemUnit').value = "กก.";
+      document.getElementById('previewImg').classList.add('hidden');
+      document.getElementById('previewPlaceholder').classList.remove('hidden');
+      document.getElementById('addItemModal').classList.remove('hidden');
+    }
+
+    function closeAddItemModal() {
+      document.getElementById('addItemModal').classList.add('hidden');
+    }
+
+    async function handleImageSelection(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      const base64WebP = await processImageToWebP(file);
+      selectedImageBase64 = base64WebP;
+
+      const img = document.getElementById('previewImg');
+      img.src = "data:image/webp;base64," + base64WebP;
+      img.classList.remove('hidden');
+      document.getElementById('previewPlaceholder').classList.add('hidden');
+    }
+
+    function processImageToWebP(file) {
+      return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const img = new Image();
+          img.onload = () => {
+            const canvas = document.createElement('canvas');
+            const MAX_WIDTH = 400;
+            const scale = MAX_WIDTH / img.width;
+            canvas.width = (img.width > MAX_WIDTH) ? MAX_WIDTH : img.width;
+            canvas.height = (img.width > MAX_WIDTH) ? (img.height * scale) : img.height;
+
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+            const webpData = canvas.toDataURL('image/webp', 0.7);
+            resolve(webpData.split(',')[1]);
+          };
+          img.src = e.target.result;
+        };
+        reader.readAsDataURL(file);
+      });
+    }
+
+    async function saveNewItem() {
+      const name = document.getElementById('newItemName').value.trim();
+      const unit = document.getElementById('newItemUnit').value;
+
+      if (!name) {
+        alert("กรุณากรอกชื่อสินค้า/ผักครับ");
+        return;
+      }
+
+      const btn = document.getElementById('btnSaveNewItem');
+      btn.disabled = true;
+      btn.innerText = "กำลังอัปโหลดรูป...";
+
+      try {
+        const res = await fetch(APPS_SCRIPT_URL, {
+          method: "POST",
+          headers: { "Content-Type": "text/plain;charset=utf-8" },
+          body: JSON.stringify({
+            action: "addNewItem",
+            name: name,
+            unit: unit,
+            base64Image: selectedImageBase64
+          })
+        });
+        const result = await res.json();
+
+        if (result.success) {
+          alert(`✅ เพิ่มสินค้า "${name}" สำเร็จแล้ว!`);
+          closeAddItemModal();
+        } else {
+          alert("เกิดข้อผิดพลาด: " + result.error);
+        }
+      } catch (err) {
+        alert("บันทึกไม่สำเร็จ กรุณาลองใหม่อีกครั้ง");
+      } finally {
+        btn.disabled = false;
+        btn.innerText = "บันทึกสินค้า";
+      }
+    }
+
+    // จัดการแท็บร้านค้า
+    async function loadShopDirectory() {
+      try {
+        const res = await fetch(`${APPS_SCRIPT_URL}?action=getInitialData`);
+        const data = await res.json();
+        if (data.success && data.customers) {
+          allShops = data.customers;
+          renderShopsTab();
+        }
+      } catch (e) {
+        console.error("โหลดรายชื่อร้านไม่สำเร็จ", e);
+      }
+    }
+
+    function renderShopsTab(filtered = null) {
+      const container = document.getElementById('shopsListContainer');
+      const list = filtered || allShops;
+
+      if (list.length === 0) {
+        container.innerHTML = '<div class="text-center py-10 text-gray-400 text-sm bg-white rounded-2xl border border-gray-200 p-6">ไม่พบรายชื่อร้านค้า</div>';
+        return;
+      }
+
+      const baseUrl = window.location.href.split('admin.html')[0];
+
+      container.innerHTML = list.map((shop, idx) => {
+        const targetUrl = `${baseUrl}?shop=${encodeURIComponent(shop.name)}`;
+
+        return `
+          <div class="bg-white p-3.5 rounded-2xl border border-gray-200 shadow-sm flex items-center justify-between gap-3">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center font-extrabold text-sm">
+                ${idx + 1}
+              </div>
+              <div>
+                <h4 class="font-extrabold text-base text-gray-900">${shop.name}</h4>
+                ${shop.contact ? `<p class="text-xs text-gray-400">📞 ${shop.contact}</p>` : ''}
+              </div>
+            </div>
+
+            <button onclick="copySingleShopLink('${shop.name}', '${targetUrl}')" class="bg-emerald-600 active:bg-emerald-700 text-white px-3.5 py-2 rounded-xl text-xs font-bold shadow flex items-center gap-1 whitespace-nowrap">
+              <span>📋 คัดลอกลิงก์</span>
+            </button>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function filterShopsList() {
+      const kw = document.getElementById('searchShopInput').value.trim().toLowerCase();
+      if (!kw) renderShopsTab();
+      else renderShopsTab(allShops.filter(s => s.name.toLowerCase().includes(kw)));
+    }
+
+    function copySingleShopLink(shopName, url) {
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(url).then(() => {
+          alert(`✓ คัดลอกลิงก์ของ "${shopName}" แล้ว นำไปวางส่งใน LINE ได้เลย`);
+        }).catch(() => {
+          window.prompt(`คัดลอกลิงก์ของ "${shopName}" ส่งให้ลูกค้า:`, url);
+        });
       } else {
-        document.getElementById('summaryTab').classList.add('hidden');
-        document.getElementById('packingTab').classList.remove('hidden');
-        document.getElementById('tabPackingBtn').className = "flex-1 py-2 rounded-lg bg-white text-emerald-800 shadow transition";
-        document.getElementById('tabSummaryBtn').className = "flex-1 py-2 rounded-lg text-gray-600 transition";
+        window.prompt(`คัดลอกลิงก์ของ "${shopName}" ส่งให้ลูกค้า:`, url);
+      }
+    }
+
+    function createAndCopyShopLink() {
+      const input = document.getElementById('adminNewShopInput');
+      const shopName = input.value.trim();
+      if (!shopName) {
+        alert("กรุณาพิมพ์ชื่อร้านค้าก่อนครับ");
+        return;
+      }
+
+      const currentUrl = window.location.href.split('admin.html')[0];
+      const targetUrl = `${currentUrl}?shop=${encodeURIComponent(shopName)}`;
+
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(targetUrl).then(() => {
+          showCopySuccess();
+        }).catch(() => {
+          promptCopyFallback(targetUrl);
+        });
+      } else {
+        promptCopyFallback(targetUrl);
+      }
+    }
+
+    function showCopySuccess() {
+      const status = document.getElementById('adminCopyStatus');
+      status.classList.remove('hidden');
+      setTimeout(() => status.classList.add('hidden'), 4000);
+    }
+
+    function promptCopyFallback(url) {
+      window.prompt("คัดลอกลิงก์นี้ส่งให้ลูกค้าทาง LINE ได้เลยครับ:", url);
+    }
+
+    function switchTab(tab) {
+      const summarySec = document.getElementById('summaryTab');
+      const packingSec = document.getElementById('packingTab');
+      const shopsSec = document.getElementById('shopsTab');
+      const b1 = document.getElementById('tabSummaryBtn');
+      const b2 = document.getElementById('tabPackingBtn');
+      const b3 = document.getElementById('tabShopsBtn');
+
+      summarySec.classList.add('hidden');
+      packingSec.classList.add('hidden');
+      shopsSec.classList.add('hidden');
+
+      b1.className = "flex-1 py-2.5 rounded-xl text-gray-500 transition flex justify-center items-center gap-1";
+      b2.className = "flex-1 py-2.5 rounded-xl text-gray-500 transition flex justify-center items-center gap-1";
+      b3.className = "flex-1 py-2.5 rounded-xl text-gray-500 transition flex justify-center items-center gap-1";
+
+      if (tab === 'summary') {
+        summarySec.classList.remove('hidden');
+        b1.className = "flex-1 py-2.5 rounded-xl bg-white text-emerald-800 shadow transition flex justify-center items-center gap-1";
+      } else if (tab === 'packing') {
+        packingSec.classList.remove('hidden');
+        b2.className = "flex-1 py-2.5 rounded-xl bg-white text-emerald-800 shadow transition flex justify-center items-center gap-1";
+      } else if (tab === 'shops') {
+        shopsSec.classList.remove('hidden');
+        b3.className = "flex-1 py-2.5 rounded-xl bg-white text-emerald-800 shadow transition flex justify-center items-center gap-1";
+        if (allShops.length === 0) loadShopDirectory();
       }
     }
 
     window.onload = () => {
       initDate();
       loadOrders();
+      loadShopDirectory();
     };
   </script>
 </body>
