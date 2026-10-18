@@ -1,0 +1,24 @@
+<section class="bg-white p-4 rounded-2xl border border-emerald-200 shadow-sm space-y-3">
+  <h2 class="font-extrabold text-gray-900">📸 ถ่ายรูปและเพิ่มผักใหม่</h2>
+  <label class="flex flex-col items-center justify-center gap-2 p-4 border-2 border-dashed rounded-2xl bg-gray-50 cursor-pointer">
+    <img id="itemImagePreview" class="hidden w-40 h-40 object-cover rounded-xl" alt="ตัวอย่างรูปสินค้า">
+    <span id="itemImagePrompt" class="text-sm text-gray-500">แตะเพื่อเปิดกล้องหรือเลือกรูป</span>
+    <input id="itemImageInput" type="file" accept="image/*" capture="environment" class="hidden">
+  </label>
+  <label class="block text-xs font-bold">ชื่อสินค้า
+    <input id="newItemName" maxlength="120" placeholder="เช่น มะนาวแป้น" class="w-full p-3 mt-1 border rounded-xl text-sm">
+  </label>
+  <label class="block text-xs font-bold">หน่วยนับ
+    <select id="newItemUnit" class="w-full p-3 mt-1 border rounded-xl bg-white text-sm">
+      <option value="กก.">กิโลกรัม (กก.)</option>
+      <option value="ขีด">ขีด</option>
+      <option value="ลูก">ลูก</option>
+      <option value="ถุง">ถุง</option>
+      <option value="มัด">มัด</option>
+      <option value="ห่อ">ห่อ</option>
+    </select>
+  </label>
+  <p class="text-xs text-gray-500">รูปจะถูกย่อไม่เกิน 400px และแปลงเป็น WebP ก่อนอัปโหลด</p>
+  <button data-action="save-item" id="saveItemButton" class="w-full py-3 bg-emerald-700 text-white rounded-xl font-bold">บันทึกสินค้า</button>
+  <p id="itemStatus" class="hidden text-sm font-semibold"></p>
+</section>

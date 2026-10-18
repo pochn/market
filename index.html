@@ -152,7 +152,9 @@
 
   <script>
     let currentShop = "";
+    let currentShopId = "";
     let vegetables = [];
+    let customerDirectory = [];
     let selectedVegNames = new Set(); // เก็บชื่อผักที่เลือกใน Step 1
     let cartItems = {}; // { "ผักชี": { qty: 1, unit: "กิโลกรัม" } }
     let marketDate = "";
@@ -170,18 +172,29 @@
 
     function initShopIdentity() {
       const urlParams = new URLSearchParams(window.location.search);
+      const shopIdParam = urlParams.get('id');
       const shopParam = urlParams.get('shop');
 
-      if (shopParam && shopParam.trim() !== '') {
+      if (shopIdParam && shopIdParam.trim() !== '') {
+        currentShopId = shopIdParam.trim();
+        currentShop = "";
+        localStorage.setItem('myShopId', currentShopId);
+      } else if (shopParam && shopParam.trim() !== '') {
+        currentShopId = "";
         currentShop = shopParam.trim();
         localStorage.setItem('myShopName', currentShop);
+        localStorage.removeItem('myShopId');
         window.history.replaceState({}, document.title, window.location.pathname);
       } else {
-        currentShop = localStorage.getItem('myShopName') || "";
+        currentShopId = localStorage.getItem('myShopId') || "";
+        currentShop = currentShopId ? "" : (localStorage.getItem('myShopName') || "");
       }
 
       const display = document.getElementById('currentShopDisplay');
-      if (currentShop) {
+      if (currentShopId) {
+        display.innerText = "กำลังตรวจสอบรหัสร้าน...";
+        document.getElementById('shopToolBox').classList.add('hidden');
+      } else if (currentShop) {
         display.innerText = currentShop;
       } else {
         display.innerHTML = `<span class="text-amber-600 text-sm font-normal">ยังไม่ได้ระบุร้าน (แตะ ⚙️ สลับ/สร้างลิงก์)</span>`;
@@ -203,16 +216,19 @@
       const baseUrl = window.location.origin + window.location.pathname;
       const fullUrl = `${baseUrl}?shop=${encodeURIComponent(name)}`;
 
+      currentShopId = "";
+      currentShop = name;
+      localStorage.removeItem('myShopId');
+      localStorage.setItem('myShopName', currentShop);
+      document.getElementById('currentShopDisplay').innerText = currentShop;
       navigator.clipboard.writeText(fullUrl).then(() => {
         const status = document.getElementById('copyStatusText');
         status.classList.remove('hidden');
         setTimeout(() => status.classList.add('hidden'), 5000);
-        currentShop = name;
-        localStorage.setItem('myShopName', currentShop);
-        document.getElementById('currentShopDisplay').innerText = currentShop;
         loadLastOrderForShop();
       }).catch(() => {
         prompt("คัดลอกลิงก์นี้ส่งให้ลูกค้าได้เลยครับ:", fullUrl);
+        loadLastOrderForShop();
       });
     }
 
@@ -225,6 +241,19 @@
         const data = await res.json();
         if (data.success) {
           vegetables = data.vegetables;
+          customerDirectory = Array.isArray(data.customers) ? data.customers : [];
+          if (currentShopId) {
+            const shop = customerDirectory.find(customer => String(customer.id) === currentShopId);
+            if (shop) {
+              currentShop = shop.name;
+              localStorage.setItem('myShopName', currentShop);
+              document.getElementById('currentShopDisplay').innerText = currentShop;
+              window.history.replaceState({}, document.title, window.location.pathname);
+            } else {
+              currentShop = "";
+              document.getElementById('currentShopDisplay').innerHTML = `<span class="text-red-600 text-sm font-normal">ไม่พบรหัสร้านนี้ กรุณาติดต่อแม่ทิพย์</span>`;
+            }
+          }
           renderVegGrid();
           loadLastOrderForShop();
         }

@@ -1,0 +1,20 @@
+function readMarketStorage(key, fallback) {
+  try {
+    const value = localStorage.getItem(key);
+    return value === null ? fallback : JSON.parse(value);
+  } catch (error) {
+    console.warn(`ข้อมูล ${key} ใน localStorage ไม่ถูกต้อง`, error);
+    return fallback;
+  }
+}
+
+window.MarketState = {
+  currentOrders: [],
+  allShops: [],
+  packedItems: readMarketStorage("market_packed_items", {}),
+  boughtItems: new Set(readMarketStorage("market_bought_items", [])),
+  customPrices: readMarketStorage("market_custom_prices", {}),
+  editingContext: null,
+  selectedImageBase64: "",
+  activeTab: "market"
+};

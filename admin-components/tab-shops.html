@@ -1,0 +1,32 @@
+<section class="bg-white p-4 rounded-2xl border border-emerald-200 shadow-sm space-y-3">
+  <h2 class="font-extrabold text-gray-900">➕ เพิ่มร้านค้าและสร้างลิงก์</h2>
+  <input id="newShopName" type="text" maxlength="120" placeholder="ชื่อร้านค้า" class="w-full p-3 bg-gray-50 border rounded-xl text-sm">
+  <div class="flex gap-2">
+    <input id="newShopPhone" type="tel" maxlength="30" placeholder="เบอร์โทร (ไม่บังคับ)" class="flex-1 p-3 bg-gray-50 border rounded-xl text-sm">
+    <button data-action="create-shop" id="createShopButton" class="bg-emerald-600 text-white px-4 rounded-xl text-sm font-bold">สร้าง & คัดลอก</button>
+  </div>
+  <p id="shopCopyStatus" class="hidden text-xs text-emerald-700 font-bold"></p>
+</section>
+<input id="searchShopInput" type="search" placeholder="🔍 ค้นหาชื่อร้านค้า..." class="w-full p-3 bg-white border rounded-xl text-sm">
+<div id="shopsListContainer" class="space-y-2.5"></div>
+<div id="editShopModal" class="fixed inset-0 bg-black/60 z-50 hidden items-center justify-center p-4">
+  <div class="bg-white w-full max-w-sm rounded-3xl p-5 shadow-2xl space-y-4">
+    <div class="flex justify-between items-center border-b pb-2">
+      <h3 class="font-extrabold text-base">✏️ แก้ไขข้อมูลร้านค้า</h3>
+      <button data-action="close-edit-shop" class="text-gray-400 text-xl font-bold">&times;</button>
+    </div>
+    <label class="block text-xs font-bold">รหัสร้านค้า
+      <input id="editShopId" disabled class="w-full p-2.5 mt-1 bg-gray-100 border rounded-xl font-mono text-xs">
+    </label>
+    <label class="block text-xs font-bold">ชื่อร้านค้า
+      <input id="editShopName" maxlength="120" class="w-full p-2.5 mt-1 border rounded-xl">
+    </label>
+    <label class="block text-xs font-bold">เบอร์โทร
+      <input id="editShopPhone" type="tel" maxlength="30" class="w-full p-2.5 mt-1 border rounded-xl">
+    </label>
+    <div class="flex gap-2 border-t pt-3">
+      <button data-action="close-edit-shop" class="flex-1 py-3 bg-gray-100 rounded-xl font-bold text-sm">ยกเลิก</button>
+      <button data-action="save-edit-shop" id="saveShopButton" class="flex-1 py-3 bg-emerald-600 text-white rounded-xl font-bold text-sm">บันทึก</button>
+    </div>
+  </div>
+</div>
