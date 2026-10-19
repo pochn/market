@@ -2,7 +2,7 @@
 <html lang="th">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>แดชบอร์ดตลาดเช้า - แม่ทิพย์</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -12,58 +12,190 @@
   </style>
 </head>
 <body class="bg-gray-100 min-h-screen pb-12 text-gray-800">
-  <header class="bg-emerald-800 text-white p-4 shadow-md sticky top-0 z-40">
-    <div class="max-w-xl mx-auto flex flex-col gap-3">
-      <div class="flex justify-between items-center">
-        <div>
-          <h1 class="text-xl font-extrabold tracking-tight">🛒 ตลาดเช้าแม่ทิพย์</h1>
-          <p class="text-xs text-emerald-200">จัดการรอบตลาดและข้อมูลร้านค้า</p>
+
+  <!-- Header ด้านบนสุด พร้อมปุ่มสลับ 2 โหมดหลัก -->
+  <header class="bg-emerald-800 text-white p-3.5 shadow-md sticky top-0 z-40">
+    <div class="max-w-xl mx-auto flex flex-col gap-2.5">
+      
+      <div class="flex justify-between items-center gap-2">
+        <h1 class="text-lg font-black tracking-tight">🛒 ตลาดเช้าแม่ทิพย์</h1>
+
+        <!-- สลับโหมดหลัก: หน้างานตลาดเช้า vs ระบบหลังบ้าน -->
+        <div class="flex bg-emerald-950/60 p-1 rounded-xl text-xs font-bold border border-emerald-700/60 shadow-inner">
+          <button id="mainModeDailyBtn" data-main-mode="daily" class="px-3 py-1.5 rounded-lg bg-white text-emerald-900 shadow transition">
+            หน้างานตลาด
+          </button>
+          <button id="mainModeMgmtBtn" data-main-mode="management" class="px-3 py-1.5 rounded-lg text-emerald-200 hover:text-white transition">
+            ⚙️ ระบบหลังบ้าน
+          </button>
         </div>
-        <button id="refreshButton" class="bg-emerald-700 border border-emerald-500 px-3.5 py-2 rounded-xl text-xs font-bold shadow">🔄 รีเฟรช</button>
       </div>
-      <label class="flex items-center gap-2 bg-emerald-900/70 p-2 rounded-xl text-sm border border-emerald-700">
-        <span class="text-xs text-emerald-200 font-semibold whitespace-nowrap">รอบวันที่:</span>
-        <input type="date" id="selectedDate" class="bg-white text-gray-800 px-3 py-1 rounded-lg text-sm font-bold flex-1">
-        <button id="todayButton" class="bg-emerald-600 px-3 py-1 rounded-lg text-xs font-bold">วันนี้</button>
-      </label>
+
+      <!-- แถบเลือกรอบวันที่ (แสดงในโหมดหน้างาน) -->
+      <div id="headerDateBar" class="flex items-center gap-2">
+        <label class="flex items-center gap-2 bg-emerald-900/80 p-1.5 px-2.5 rounded-xl text-xs border border-emerald-700 flex-1">
+          <span class="text-emerald-200 font-semibold whitespace-nowrap">รอบวันที่:</span>
+          <input type="date" id="selectedDate" class="bg-white text-gray-800 px-2 py-1 rounded-lg text-xs font-bold flex-1 focus:outline-none">
+          <button id="todayButton" class="bg-emerald-600 active:bg-emerald-700 px-2.5 py-1 rounded-lg text-xs font-bold text-white shadow">วันนี้</button>
+        </label>
+        <button id="refreshButton" class="bg-emerald-700 active:bg-emerald-900 border border-emerald-500 px-3 py-1.5 rounded-xl text-xs font-bold shadow flex items-center gap-1">
+          <span>🔄 รีเฟรช</span>
+        </button>
+      </div>
+
     </div>
   </header>
 
   <main id="adminApp" class="max-w-xl mx-auto p-4 space-y-4">
-    <section id="financeSummary" class="bg-slate-900 text-white p-4 rounded-2xl shadow space-y-3">
-      <div class="flex items-center justify-between">
-        <h2 class="font-extrabold">💰 สรุปยอดเงินรอบนี้</h2>
-        <span class="text-[11px] text-slate-300">คำนวณจากราคาต่อหน่วยในแท็บจัดของ</span>
-      </div>
-      <div class="grid grid-cols-3 gap-2 text-center">
-        <div class="bg-white/10 rounded-xl p-2"><p class="text-[11px] text-slate-300">สั่งทั้งหมด</p><p class="font-extrabold"><span id="financeShopCount">0</span> ร้าน</p></div>
-        <div class="bg-emerald-700/60 rounded-xl p-2"><p class="text-[11px] text-emerald-100">ชำระแล้ว</p><p class="font-extrabold"><span id="financePaidCount">0</span> ร้าน</p><p class="text-xs"><span id="financePaidAmount">0</span> บาท</p></div>
-        <div class="bg-orange-700/60 rounded-xl p-2"><p class="text-[11px] text-orange-100">ค้างชำระ</p><p class="font-extrabold"><span id="financeUnpaidCount">0</span> ร้าน</p><p class="text-xs"><span id="financeUnpaidAmount">0</span> บาท</p></div>
-      </div>
-      <p id="financeUnpaidShops" class="text-xs text-orange-100">ร้านค้างชำระ: -</p>
-    </section>
-    <div class="grid grid-cols-2 gap-3">
-      <div class="bg-white p-3 rounded-2xl border shadow-sm text-center">
-        <p class="text-xs font-semibold text-gray-500">ร้านค้าที่สั่งทั้งหมด</p>
-        <p class="text-2xl font-extrabold text-emerald-700 mt-0.5"><span id="statTotalShops">0</span> <span class="text-xs font-normal text-gray-600">ร้าน</span></p>
-      </div>
-      <div class="bg-white p-3 rounded-2xl border shadow-sm text-center">
-        <p class="text-xs font-semibold text-gray-500">จัดของครบแล้ว</p>
-        <p class="text-2xl font-extrabold text-blue-600 mt-0.5"><span id="statCompletedShops">0</span> <span class="text-xs font-normal text-gray-600">ร้าน</span></p>
-      </div>
+
+    <!-- ============================================== -->
+    <!-- 1. เมนูนำทางของโหมดหน้างาน (3 แท็บ สะอาดตา) -->
+    <!-- ============================================== -->
+    <div id="dailyNavSection">
+      <nav class="grid grid-cols-3 gap-1 bg-gray-200/80 p-1 rounded-2xl font-bold text-xs shadow-inner">
+        <button data-tab="market" class="tab-button py-2.5 rounded-xl bg-white text-emerald-800 shadow transition flex justify-center items-center gap-1">
+          <span>🥦 ยอดซื้อตลาด</span>
+        </button>
+        <button data-tab="packing" class="tab-button py-2.5 rounded-xl text-gray-500 transition flex justify-center items-center gap-1">
+          <span>📦 แยกจัดตามร้าน</span>
+        </button>
+        <button data-tab="finance" class="tab-button py-2.5 rounded-xl text-gray-500 transition flex justify-center items-center gap-1">
+          <span>💰 สรุปยอดเงิน</span>
+        </button>
+      </nav>
     </div>
-    <nav class="grid grid-cols-2 gap-1 bg-gray-200/80 p-1.5 rounded-2xl font-bold text-xs sm:text-sm shadow-inner">
-      <button data-tab="market" class="tab-button py-2.5 rounded-xl bg-white text-emerald-800 shadow">🥦 ยอดซื้อตลาด · Daily</button>
-      <button data-tab="packing" class="tab-button py-2.5 rounded-xl text-gray-500">📦 แยกจัดตามร้าน · Daily</button>
-      <button data-tab="shops" class="tab-button py-2.5 rounded-xl text-gray-500">🏪 ร้านค้า & ลิงก์ · Management</button>
-      <button data-tab="items" class="tab-button py-2.5 rounded-xl text-gray-500">📸 เพิ่มผัก · Management</button>
-    </nav>
+
+    <!-- ============================================== -->
+    <!-- 2. เมนูนำทางของโหมดหลังบ้าน (3 แท็บจัดการ) -->
+    <!-- ============================================== -->
+    <div id="mgmtNavSection" class="hidden">
+      <nav class="grid grid-cols-3 gap-1 bg-gray-200/80 p-1 rounded-2xl font-bold text-xs shadow-inner">
+        <button data-tab="itemsList" class="tab-button py-2.5 rounded-xl bg-white text-emerald-800 shadow transition flex justify-center items-center gap-1">
+          <span>🥬 คลังผักทั้งหมด</span>
+        </button>
+        <button data-tab="items" class="tab-button py-2.5 rounded-xl text-gray-500 transition flex justify-center items-center gap-1">
+          <span>📸 เพิ่มผักใหม่</span>
+        </button>
+        <button data-tab="shops" class="tab-button py-2.5 rounded-xl text-gray-500 transition flex justify-center items-center gap-1">
+          <span>🏪 ร้านค้า & ลิงก์</span>
+        </button>
+      </nav>
+    </div>
+
+    <!-- แผงเนื้อหาคอมโพเนนต์ -->
+    <!-- แผง 1: รวมยอดซื้อตลาด -->
     <section id="marketPanel" class="space-y-3">กำลังโหลด...</section>
+
+    <!-- แผง 2: แยกจัดตามร้าน -->
     <section id="packingPanel" class="hidden space-y-3">กำลังโหลด...</section>
-    <section id="shopsPanel" class="hidden space-y-3">กำลังโหลด...</section>
+
+    <!-- แผง 3: สรุปยอดเงินและสถิติการเงิน (ย้ายมาไว้ในแท็บนี้แล้ว) -->
+    <section id="financePanel" class="hidden space-y-4">
+      <div class="bg-gradient-to-br from-emerald-500 via-teal-500 to-cyan-500 text-white p-4 rounded-3xl shadow-lg border border-emerald-400 space-y-3">
+        <div class="flex justify-between items-center border-b border-white/30 pb-2">
+          <span class="text-xs font-bold text-white flex items-center gap-1">
+            <span>💰 สรุปยอดเงินรอบตลาดนี้</span>
+          </span>
+          <span class="text-[10px] text-white/80">คำนวณจากยอดในแท็บแยกจัดของ</span>
+        </div>
+
+        <div class="grid grid-cols-3 gap-2 text-center">
+          <div class="bg-white/95 p-2.5 rounded-2xl border border-white shadow-sm">
+            <p class="text-[11px] text-slate-500 font-medium">สั่งทั้งหมด</p>
+            <p class="text-lg font-black text-emerald-700 mt-0.5"><span id="statTotalShops">0</span> <span class="text-[10px] font-normal text-slate-500">ร้าน</span></p>
+          </div>
+          <div class="bg-lime-50 p-2.5 rounded-2xl border border-lime-200 shadow-sm">
+            <p class="text-[11px] text-emerald-700 font-medium">ชำระแล้ว</p>
+            <p class="text-lg font-black text-emerald-700 mt-0.5"><span id="statPaidShops">0</span> <span class="text-[10px] font-normal text-emerald-600">ร้าน</span></p>
+            <p class="text-[10px] text-emerald-700 font-bold"><span id="statPaidAmount">0</span> ฿</p>
+          </div>
+          <div class="bg-amber-50 p-2.5 rounded-2xl border border-amber-200 shadow-sm">
+            <p class="text-[11px] text-amber-700 font-medium">ค้างชำระ</p>
+            <p class="text-lg font-black text-amber-700 mt-0.5"><span id="statUnpaidShops">0</span> <span class="text-[10px] font-normal text-amber-600">ร้าน</span></p>
+            <p class="text-[10px] text-amber-700 font-bold"><span id="statUnpaidAmount">0</span> ฿</p>
+          </div>
+        </div>
+
+        <div class="text-[11px] text-white bg-white/15 p-2.5 rounded-xl space-y-1 border border-white/20">
+          <span class="font-bold text-amber-100 block">⚠️ รายชื่อร้านที่ค้างชำระ:</span>
+          <p id="statUnpaidList" class="text-white leading-relaxed">ไม่มี</p>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-2 gap-3">
+        <div class="bg-white p-3.5 rounded-2xl border border-gray-200 shadow-sm text-center">
+          <p class="text-xs font-semibold text-gray-500">ร้านค้าที่สั่งรอบนี้</p>
+          <p class="text-2xl font-black text-emerald-700 mt-0.5"><span id="statTotalShopsCard">0</span> <span class="text-xs font-normal text-gray-500">ร้าน</span></p>
+        </div>
+        <div class="bg-white p-3.5 rounded-2xl border border-gray-200 shadow-sm text-center">
+          <p class="text-xs font-semibold text-gray-500">จัดของครบแล้ว</p>
+          <p class="text-2xl font-black text-blue-600 mt-0.5"><span id="statCompletedShops">0</span> <span class="text-xs font-normal text-gray-500">ร้าน</span></p>
+        </div>
+      </div>
+    </section>
+
+    <!-- แผง 4: คลังผักทั้งหมดในสต็อก (To-Do ข้อ 2) -->
+    <section id="itemsListPanel" class="hidden space-y-3">
+      <div class="bg-emerald-50 border border-emerald-200 p-2.5 rounded-xl text-xs text-emerald-800 font-bold flex justify-between items-center">
+        <span>🥬 คลังผัก/ผลไม้</span>
+        <span class="text-right">
+          แสดงในร้าน <span id="activeItemCount">0</span> รายการ
+          <span class="mx-1 text-emerald-400">|</span>
+          ซ่อนชั่วคราว <span id="hiddenItemCount">0</span> รายการ
+        </span>
+      </div>
+      <input type="search" id="searchItemInput" placeholder="🔍 ค้นหาชื่อผักในสต็อก..." class="w-full p-3 bg-white border rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none shadow-sm">
+      <div id="allVegetablesContainer" class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div class="col-span-full text-center py-10 text-gray-400">กำลังโหลดรายการผัก...</div>
+      </div>
+    </section>
+
+    <!-- แผง 5: ถ่ายรูป/เพิ่มผักใหม่ -->
     <section id="itemsPanel" class="hidden space-y-3">กำลังโหลด...</section>
+
+    <!-- แผง 6: รายชื่อร้านค้า & ลิงก์ -->
+    <section id="shopsPanel" class="hidden space-y-3">กำลังโหลด...</section>
+
   </main>
 
+  <!-- Modal แก้ไขข้อมูลผัก (ชื่อและหน่วยนับ) -->
+  <div id="editVegModal" class="fixed inset-0 bg-black/60 z-50 hidden items-center justify-center p-4">
+    <div class="bg-white w-full max-w-sm rounded-3xl p-5 shadow-2xl space-y-4">
+      <div class="flex justify-between items-center border-b pb-2">
+        <h3 class="font-extrabold text-base text-gray-900">✏️ แก้ไขข้อมูลผัก</h3>
+        <button data-action="close-edit-veg" class="text-gray-400 text-xl font-bold">&times;</button>
+      </div>
+      <div class="space-y-3 text-sm">
+        <div>
+          <label class="block text-xs font-bold text-gray-700 mb-1">รหัสสินค้า (Item ID):</label>
+          <input type="text" id="editVegIdInput" disabled class="w-full p-2 bg-gray-100 text-gray-500 border rounded-xl font-mono text-xs">
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-gray-700 mb-1">ชื่อผัก/สินค้า:</label>
+          <input type="text" id="editVegNameInput" class="w-full p-2.5 border rounded-xl font-bold focus:ring-2 focus:ring-emerald-500 focus:outline-none">
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-gray-700 mb-1">หน่วยนับ:</label>
+          <select id="editVegUnitInput" class="w-full p-2.5 border rounded-xl bg-white font-semibold focus:ring-2 focus:ring-emerald-500 focus:outline-none">
+            <option value="กก.">กิโลกรัม (กก.)</option>
+            <option value="ขีด">ขีด</option>
+            <option value="กรัม">กรัม</option>
+            <option value="ลูก">ลูก</option>
+            <option value="ถุง">ถุง</option>
+            <option value="มัด">มัด</option>
+            <option value="ห่อ">ห่อ</option>
+            <option value="แพ็ค">แพ็ค</option>
+          </select>
+        </div>
+      </div>
+      <div class="flex gap-2 border-t pt-3">
+        <button data-action="close-edit-veg" class="flex-1 py-3 bg-gray-100 rounded-xl font-bold text-gray-600 text-sm">ยกเลิก</button>
+        <button data-action="save-edit-veg" id="saveEditVegButton" class="flex-1 py-3 bg-emerald-600 active:bg-emerald-700 text-white rounded-xl font-bold text-sm shadow">บันทึก</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal ปรับจำนวนผักในแท็บจัดของ -->
   <div id="editQtyModal" class="fixed inset-0 bg-black/60 z-50 hidden items-center justify-center p-4">
     <div class="bg-white w-full max-w-sm rounded-3xl p-5 shadow-2xl space-y-4">
       <div>
@@ -72,12 +204,12 @@
       </div>
       <label class="block text-xs font-bold text-gray-600">จำนวนที่หาได้จริง:
         <span class="flex items-center gap-2 mt-1">
-          <input type="number" min="0" step="0.1" id="newQtyInput" class="w-full p-3 border-2 border-emerald-500 rounded-xl font-bold text-xl text-center">
-          <span id="editUnitLabel"></span>
+          <input type="number" min="0" step="0.1" id="newQtyInput" class="w-full p-3 border-2 border-emerald-500 rounded-xl font-bold text-xl text-center focus:outline-none">
+          <span id="editUnitLabel" class="font-bold text-gray-700"></span>
         </span>
       </label>
       <div class="grid grid-cols-4 gap-2">
-        <button data-quick-qty="0" class="py-2 bg-red-50 text-red-600 border rounded-xl font-bold text-xs">หมด (0)</button>
+        <button data-quick-qty="0" class="py-2 bg-red-50 text-red-600 border border-red-200 rounded-xl font-bold text-xs">หมด (0)</button>
         <button data-quick-qty="0.5" class="py-2 bg-gray-50 border rounded-xl font-bold text-xs">0.5</button>
         <button data-quick-qty="1" class="py-2 bg-gray-50 border rounded-xl font-bold text-xs">1</button>
         <button data-quick-qty="2" class="py-2 bg-gray-50 border rounded-xl font-bold text-xs">2</button>
@@ -88,6 +220,7 @@
       </div>
     </div>
   </div>
+
   <script src="admin-components/config.js"></script>
   <script src="admin-components/state.js"></script>
   <script src="admin-components/admin.js"></script>

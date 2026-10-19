@@ -6,6 +6,13 @@ const SHEET_SHOPS  = "Shops";
 const SHEET_ITEMS  = "Items";
 const DRIVE_IMAGE_FOLDER_ID = "1SCeXszk1f7EHck0l5ANZdfz3byPtOKVR";
 
+function ensureItemStatusColumn(sheet) {
+  const header = sheet.getRange(1, 5).getValue();
+  if (String(header).trim().toLowerCase() !== "status") {
+    sheet.getRange(1, 5).setValue("Status");
+  }
+}
+
 function getOrderBillingColumns(sheet, createMissing) {
   let lastColumn = Math.max(sheet.getLastColumn(), 8);
   let headers = sheet.getRange(1, 1, 1, lastColumn).getValues()[0];
@@ -48,14 +55,18 @@ function doGet(e) {
       const shopsSheet = ss.getSheetByName(SHEET_SHOPS);
       
       let vegetables = [];
-      if (itemsSheet && itemsSheet.getLastRow() > 1) {
-        const itemRows = itemsSheet.getDataRange().getValues().slice(1);
-        vegetables = itemRows.map(r => ({
-          id: r[0],
-          name: r[1],
-          unit: r[2],
-          image: r[3] || ""
-        }));
+      if (itemsSheet) {
+        ensureItemStatusColumn(itemsSheet);
+        if (itemsSheet.getLastRow() > 1) {
+          const itemRows = itemsSheet.getDataRange().getValues().slice(1);
+          vegetables = itemRows.map(r => ({
+            id: r[0],
+            name: r[1],
+            unit: r[2],
+            image: r[3] || "",
+            status: String(r[4] || "ACTIVE").trim().toUpperCase() === "HIDDEN" ? "HIDDEN" : "ACTIVE"
+          }));
+        }
       }
       
       let customers = [];
@@ -234,6 +245,18 @@ function doPost(e) {
     
     // 2.1 สั่งออเดอร์ใหม่จากลูกค้า (index.html)
     if (data.action === "createOrder") {
+      if (!Array.isArray(data.items)) {
+        return responseJSON({ success: false, message: "Invalid order items" });
+      }
+      const itemRows = itemsSheet.getDataRange().getValues();
+      const unavailableItems = data.items.filter(item => {
+        const matchingRows = itemRows.slice(1).filter(row => String(row[1]) === String(item.name));
+        return matchingRows.length > 0 && matchingRows.every(row =>
+          String(row[4] || "ACTIVE").trim().toUpperCase() === "HIDDEN");
+      });
+      if (unavailableItems.length) {
+        return responseJSON({ success: false, message: "One or more items are currently unavailable" });
+      }
       const orderId = "ORD-" + Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyyMMdd-HHmmss");
       const timestamp = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd HH:mm:ss");
       const orderDate = data.orderDate;
@@ -347,6 +370,7 @@ function doPost(e) {
 
     // 2.4 เพิ่มสินค้าผักใหม่พร้อมอัปโหลดรูปภาพ WebP เข้า Google Drive (admin.html)
     if (data.action === "addNewItem") {
+      ensureItemStatusColumn(itemsSheet);
       const itemName = data.name;
       const unit = data.unit || "กก.";
       const base64Image = data.base64Image;
@@ -362,10 +386,76 @@ function doPost(e) {
       }
 
       const lastRow = itemsSheet.getLastRow();
-      const newId = "ITM-" + String(lastRow).padStart(3, '0');
-      itemsSheet.appendRow([newId, itemName, unit, imageUrl]);
+      const existingIds = lastRow > 1
+        ? itemsSheet.getRange(2, 1, lastRow - 1, 1).getValues()
+        : [];
+      const highestId = existingIds.reduce((highest, row) => {
+        const match = String(row[0]).match(/^ITM-(\d+)$/);
+        return match ? Math.max(highest, Number(match[1])) : highest;
+      }, 0);
+      const newId = "ITM-" + String(highestId + 1).padStart(3, '0');
+      itemsSheet.appendRow([newId, itemName, unit, imageUrl, "ACTIVE"]);
 
       return responseJSON({ success: true, itemId: newId, imageUrl: imageUrl });
+    }
+
+    // สลับการแสดงสินค้าในหน้าสั่งซื้อ
+    if (data.action === "toggleItemStatus") {
+      const itemId = data.itemId;
+      const status = data.status;
+      if (itemId === undefined || itemId === null || String(itemId).trim() === "" ||
+          ["ACTIVE", "HIDDEN"].indexOf(status) < 0) {
+        return responseJSON({ success: false, message: "Invalid item status data" });
+      }
+      ensureItemStatusColumn(itemsSheet);
+      const rows = itemsSheet.getDataRange().getValues();
+
+      for (let i = 1; i < rows.length; i++) {
+        if (String(rows[i][0]) === String(itemId)) {
+          itemsSheet.getRange(i + 1, 5).setValue(status);
+          return responseJSON({ success: true, status: status });
+        }
+      }
+      return responseJSON({ success: false, message: "Item not found" });
+    }
+
+    // แก้ไขข้อมูลผัก/สินค้า (ชื่อผัก, หน่วยนับ)
+    if (data.action === "updateItem") {
+      const itemId = data.itemId;
+      const newName = data.name;
+      const newUnit = data.unit;
+      if (itemId === undefined || itemId === null || String(itemId).trim() === "" ||
+          typeof newName !== "string" || !newName.trim() ||
+          typeof newUnit !== "string" || !newUnit.trim()) {
+        return responseJSON({ success: false, message: "Invalid item data" });
+      }
+      const rows = itemsSheet.getDataRange().getValues();
+
+      for (let i = 1; i < rows.length; i++) {
+        if (String(rows[i][0]) === String(itemId)) {
+          itemsSheet.getRange(i + 1, 2).setValue(newName.trim());
+          itemsSheet.getRange(i + 1, 3).setValue(newUnit.trim());
+          return responseJSON({ success: true });
+        }
+      }
+      return responseJSON({ success: false, message: "Item not found" });
+    }
+
+    // ลบสินค้าออกจากชีต Items
+    if (data.action === "deleteItem") {
+      const itemId = data.itemId;
+      if (itemId === undefined || itemId === null || String(itemId).trim() === "") {
+        return responseJSON({ success: false, message: "Invalid item ID" });
+      }
+      const rows = itemsSheet.getDataRange().getValues();
+
+      for (let i = 1; i < rows.length; i++) {
+        if (String(rows[i][0]) === String(itemId)) {
+          itemsSheet.deleteRow(i + 1);
+          return responseJSON({ success: true });
+        }
+      }
+      return responseJSON({ success: false, message: "Item not found" });
     }
 
     // 2.5 ลงทะเบียนร้านค้าใหม่พร้อมรหัส ID ภาษาอังกฤษ (admin.html)

@@ -11,10 +11,13 @@ function readMarketStorage(key, fallback) {
 window.MarketState = {
   currentOrders: [],
   allShops: [],
+  vegetables: [],
   packedItems: readMarketStorage("market_packed_items", {}),
   boughtItems: new Set(readMarketStorage("market_bought_items", [])),
   customPrices: readMarketStorage("market_custom_prices", {}),
   editingContext: null,
+  editingVegContext: null,
   selectedImageBase64: "",
-  activeTab: "market"
+  activeTab: "market",
+  mainMode: "daily"
 };

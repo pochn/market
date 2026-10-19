@@ -34,26 +34,9 @@
 
     <!-- ข้อมูลร้านค้าของลูกค้า -->
     <section class="bg-white p-4 rounded-2xl shadow-sm border border-emerald-200">
-      <div class="flex justify-between items-center">
-        <div>
-          <span class="text-xs font-bold text-emerald-600 uppercase">สั่งซื้อสำหรับร้าน:</span>
-          <h2 id="currentShopDisplay" class="text-xl font-extrabold text-gray-800">กำลังตรวจสอบร้านค้า...</h2>
-        </div>
-        <button onclick="toggleShopTool()" class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1.5 rounded-xl border font-medium">
-          ⚙️ สลับ/สร้างลิงก์
-        </button>
-      </div>
-
-      <!-- กล่องสร้างลิงก์ส่ง LINE -->
-      <div id="shopToolBox" class="hidden mt-3 pt-3 border-t border-gray-100 space-y-2">
-        <label class="block text-xs font-bold text-gray-600">พิมพ์ชื่อร้านเพื่อสร้างลิงก์ส่งให้ลูกค้า:</label>
-        <div class="flex gap-2">
-          <input type="text" id="newShopInput" placeholder="เช่น ร้านข้าวมันไก่" class="flex-1 p-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
-          <button onclick="createAndCopyLink()" class="bg-emerald-600 active:bg-emerald-700 text-white px-3.5 py-2.5 rounded-xl text-xs font-bold whitespace-nowrap shadow">
-            คัดลอกลิงก์
-          </button>
-        </div>
-        <p id="copyStatusText" class="text-[11px] text-emerald-600 font-semibold hidden">✓ คัดลอกลิงก์สำเร็จแล้ว นำไปวางส่งในแชท LINE ได้เลย!</p>
+      <div>
+        <span class="text-xs font-bold text-emerald-600 uppercase">สั่งซื้อสำหรับร้าน</span>
+        <h2 id="currentShopDisplay" class="text-xl font-extrabold text-gray-800 mt-0.5">กำลังตรวจสอบร้านค้า...</h2>
       </div>
     </section>
 
@@ -158,6 +141,49 @@
     let selectedVegNames = new Set(); // เก็บชื่อผักที่เลือกใน Step 1
     let cartItems = {}; // { "ผักชี": { qty: 1, unit: "กิโลกรัม" } }
     let marketDate = "";
+    const HISTORY_CACHE_TTL = 12 * 60 * 60 * 1000;
+
+    function escapeHtml(value) {
+      return String(value ?? "").replace(/[&<>"']/g, char => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+      })[char]);
+    }
+
+    function historyCacheKey() {
+      return `history_cache_${currentShop}`;
+    }
+
+    function renderOrderHistory(orders) {
+      const box = document.getElementById('historyContent');
+      if (!Array.isArray(orders) || orders.length === 0) {
+        box.innerHTML = '<p class="text-center text-gray-400 py-6">ไม่มีประวัติการสั่งซื้อ</p>';
+        return;
+      }
+
+      box.innerHTML = orders.map(order => `
+        <div class="bg-gray-50 border border-gray-200 p-3.5 rounded-2xl space-y-1.5">
+          <div class="flex justify-between items-center text-xs pb-1.5 border-b">
+            <span class="font-bold text-gray-700">รอบวันที่: ${escapeHtml(order.orderDate)}</span>
+            <span class="px-2.5 py-0.5 rounded-full ${order.status === 'จัดแล้ว' ? 'bg-emerald-100 text-emerald-700 font-bold' : 'bg-amber-100 text-amber-700 font-bold'}">${escapeHtml(order.status)}</span>
+          </div>
+          <div class="pt-1 text-sm space-y-1.5">
+            ${(Array.isArray(order.items) ? order.items : []).map(item => {
+              const isEdited = item.originalQty !== undefined && Number(item.originalQty) !== Number(item.qty);
+              return `
+                <div class="flex justify-between items-baseline text-gray-800">
+                  <span>• ${escapeHtml(item.name)}</span>
+                  <div class="text-right">
+                    ${isEdited ? `<span class="line-through text-xs text-gray-400 mr-1">${escapeHtml(item.originalQty)}</span>` : ''}
+                    <span class="font-extrabold ${isEdited ? 'text-amber-700' : 'text-emerald-800'}">${escapeHtml(item.qty)} ${escapeHtml(item.unit)}</span>${isEdited ? '<span class="text-[10px] bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded font-semibold block mt-0.5">แม่ปรับยอด</span>' : ''}
+                  </div>
+                </div>
+              `;
+            }).join('')}
+          </div>
+          ${order.addOnNote ? `<div class="mt-1.5 p-2 bg-yellow-50 rounded-xl text-xs text-amber-900 font-medium"><b>สั่งพิเศษ:</b> ${escapeHtml(order.addOnNote)}</div>` : ''}
+        </div>
+      `).join('');
+    }
 
     function calculateMarketDate() {
       const now = new Date();
@@ -193,54 +219,48 @@
       const display = document.getElementById('currentShopDisplay');
       if (currentShopId) {
         display.innerText = "กำลังตรวจสอบรหัสร้าน...";
-        document.getElementById('shopToolBox').classList.add('hidden');
       } else if (currentShop) {
         display.innerText = currentShop;
       } else {
-        display.innerHTML = `<span class="text-amber-600 text-sm font-normal">ยังไม่ได้ระบุร้าน (แตะ ⚙️ สลับ/สร้างลิงก์)</span>`;
-        document.getElementById('shopToolBox').classList.remove('hidden');
+        display.innerText = "ยังไม่ได้ระบุร้าน";
       }
     }
 
-    function toggleShopTool() {
-      const box = document.getElementById('shopToolBox');
-      box.classList.toggle('hidden');
-    }
+    function initializeDynamicItemActions() {
+      document.body.addEventListener('click', event => {
+        const control = event.target.closest('[data-action]');
+        if (!control) return;
 
-    function createAndCopyLink() {
-      const name = document.getElementById('newShopInput').value.trim();
-      if (!name) {
-        alert("กรุณาพิมพ์ชื่อร้านก่อนครับ");
-        return;
-      }
-      const baseUrl = window.location.origin + window.location.pathname;
-      const fullUrl = `${baseUrl}?shop=${encodeURIComponent(name)}`;
-
-      currentShopId = "";
-      currentShop = name;
-      localStorage.removeItem('myShopId');
-      localStorage.setItem('myShopName', currentShop);
-      document.getElementById('currentShopDisplay').innerText = currentShop;
-      navigator.clipboard.writeText(fullUrl).then(() => {
-        const status = document.getElementById('copyStatusText');
-        status.classList.remove('hidden');
-        setTimeout(() => status.classList.add('hidden'), 5000);
-        loadLastOrderForShop();
-      }).catch(() => {
-        prompt("คัดลอกลิงก์นี้ส่งให้ลูกค้าได้เลยครับ:", fullUrl);
-        loadLastOrderForShop();
+        const name = control.dataset.vegName;
+        switch (control.dataset.action) {
+          case 'toggle-select-veg': {
+            const item = event.target.closest('[data-action="toggle-select-veg"]');
+            toggleSelectVeg(item.dataset.vegName, item.dataset.vegUnit);
+            break;
+          }
+          case 'remove-veg':
+            removeVeg(name);
+            break;
+          case 'set-veg-qty':
+            setQty(name, Number(control.dataset.qty));
+            break;
+          case 'change-veg-qty':
+            changeQty(name, Number(control.dataset.delta));
+            break;
+        }
       });
     }
 
     async function init() {
       calculateMarketDate();
       initShopIdentity();
+      initializeDynamicItemActions();
 
       try {
         const res = await fetch(`${APPS_SCRIPT_URL}?action=getInitialData`);
         const data = await res.json();
         if (data.success) {
-          vegetables = data.vegetables;
+          vegetables = Array.isArray(data.vegetables) ? data.vegetables : [];
           customerDirectory = Array.isArray(data.customers) ? data.customers : [];
           if (currentShopId) {
             const shop = customerDirectory.find(customer => String(customer.id) === currentShopId);
@@ -265,30 +285,40 @@
     // โหลดประวัติครั้งล่าสุดของร้านนี้มาเลือกไว้ให้อัตโนมัติ
     async function loadLastOrderForShop() {
       if (!currentShop) return;
+      selectedVegNames.clear();
+      cartItems = {};
+      updateBadgesAndTotals();
       try {
         const res = await fetch(`${APPS_SCRIPT_URL}?action=getCustomerHistory&customerName=${encodeURIComponent(currentShop)}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
-        if (data.success && data.orders && data.orders.length > 0) {
-          const lastOrder = data.orders[0];
-          if (lastOrder.items && lastOrder.items.length > 0) {
-            selectedVegNames.clear();
-            cartItems = {};
-            lastOrder.items.forEach(it => {
-              selectedVegNames.add(it.name);
-              cartItems[it.name] = { qty: Number(it.qty) || 1, unit: it.unit };
-            });
-            updateBadgesAndTotals();
-            renderVegGrid();
-          }
+        if (data.success !== true || !Array.isArray(data.orders)) {
+          throw new Error(data.error || data.message || "รูปแบบข้อมูลประวัติไม่ถูกต้อง");
         }
+        if (data.orders.length > 0) {
+          const lastOrder = data.orders[0];
+          (Array.isArray(lastOrder.items) ? lastOrder.items : []).forEach(it => {
+            const vegetable = vegetables.find(item =>
+              item.name === it.name && String(item.status || "ACTIVE").trim().toUpperCase() !== "HIDDEN");
+            if (!vegetable) return;
+            selectedVegNames.add(vegetable.name);
+            cartItems[vegetable.name] = { qty: Number(it.qty) || 1, unit: vegetable.unit };
+          });
+        }
+        updateBadgesAndTotals();
+        renderVegGrid();
+        renderSelectedVegList();
       } catch (err) {
-        console.log("ไม่มีประวัติเดิม");
+        console.error("โหลดประวัติออเดอร์ล่าสุดไม่สำเร็จ", err);
       }
     }
 
    function renderVegGrid(filtered = null) {
       const grid = document.getElementById('vegGrid');
-      const list = filtered || vegetables;
+      const availableVegetables = vegetables.filter(v =>
+        String(v.status || "ACTIVE").trim().toUpperCase() !== "HIDDEN");
+      const list = (filtered || availableVegetables).filter(v =>
+        String(v.status || "ACTIVE").trim().toUpperCase() !== "HIDDEN");
 
       if (list.length === 0) {
         grid.innerHTML = '<div class="col-span-2 text-center py-8 text-gray-400">ไม่พบรายการที่ค้นหา</div>';
@@ -304,19 +334,19 @@
         }
 
         return `
-          <div onclick="toggleSelectVeg('${v.name}', '${v.unit}')" class="relative p-3 rounded-2xl border-2 transition-all cursor-pointer flex flex-col justify-between items-center text-center ${isSelected ? 'bg-emerald-50 border-emerald-500 shadow-md scale-[1.02]' : 'bg-white border-gray-200 active:scale-95 shadow-sm'}">
+          <div data-action="toggle-select-veg" data-veg-name="${escapeHtml(v.name)}" data-veg-unit="${escapeHtml(v.unit)}" class="relative p-3 rounded-2xl border-2 transition-all cursor-pointer flex flex-col justify-between items-center text-center ${isSelected ? 'bg-emerald-50 border-emerald-500 shadow-md scale-[1.02]' : 'bg-white border-gray-200 active:scale-95 shadow-sm'}">
             
             <div class="absolute top-2 right-2 w-6 h-6 rounded-full flex items-center justify-center font-bold text-xs ${isSelected ? 'bg-emerald-600 text-white shadow' : 'border border-gray-300 text-transparent'}">
               ✓
             </div>
 
             <div class="w-16 h-16 rounded-xl bg-gray-100 flex items-center justify-center overflow-hidden mb-2 mt-1">
-              ${imgSrc ? `<img src="${imgSrc}" onerror="this.outerHTML='<span class=\\'text-3xl\\'>🥬</span>'" class="w-full h-full object-cover">` : '<span class="text-3xl">🥬</span>'}
+              ${imgSrc ? `<img src="${escapeHtml(imgSrc)}" onerror="this.outerHTML='<span class=\\'text-3xl\\'>🥬</span>'" class="w-full h-full object-cover">` : '<span class="text-3xl">🥬</span>'}
             </div>
 
             <div class="w-full">
-              <h3 class="font-extrabold text-gray-900 text-base leading-tight">${v.name}</h3>
-              <p class="text-xs text-gray-500 mt-0.5">หน่วย: ${v.unit}</p>
+              <h3 class="font-extrabold text-gray-900 text-base leading-tight">${escapeHtml(v.name)}</h3>
+              <p class="text-xs text-gray-500 mt-0.5">หน่วย: ${escapeHtml(v.unit)}</p>
             </div>
 
             <div class="mt-2 w-full py-1 rounded-xl text-xs font-bold ${isSelected ? 'bg-emerald-600 text-white' : 'bg-gray-100 text-gray-500'}">
@@ -328,6 +358,7 @@
       }).join('');
     }
     function toggleSelectVeg(name, unit) {
+      if (!vegetables.some(v => v.name === name && String(v.status || "ACTIVE").trim().toUpperCase() !== "HIDDEN")) return;
       if (selectedVegNames.has(name)) {
         selectedVegNames.delete(name);
         delete cartItems[name];
@@ -379,10 +410,10 @@
           <div class="bg-white p-3.5 rounded-2xl border border-gray-200 shadow-sm space-y-2.5">
             <div class="flex justify-between items-center">
               <div>
-                <span class="font-extrabold text-base text-gray-900">${name}</span>
-                <span class="text-xs text-gray-500 ml-1">(${item.unit})</span>
+                <span class="font-extrabold text-base text-gray-900">${escapeHtml(name)}</span>
+                <span class="text-xs text-gray-500 ml-1">(${escapeHtml(item.unit)})</span>
               </div>
-              <button onclick="removeVeg('${name}')" class="text-xs text-red-500 font-bold px-2 py-1 bg-red-50 rounded-lg">
+              <button data-action="remove-veg" data-veg-name="${escapeHtml(name)}" class="text-xs text-red-500 font-bold px-2 py-1 bg-red-50 rounded-lg">
                 ✕ ยกเลิก
               </button>
             </div>
@@ -390,16 +421,16 @@
             <div class="flex items-center justify-between gap-2 pt-1 border-t border-gray-100">
               <!-- ปุ่มลัดยอดนิยม -->
               <div class="flex gap-1.5">
-                <button onclick="setQty('${name}', 0.5)" class="px-2.5 py-1.5 rounded-xl border font-bold text-xs ${item.qty === 0.5 ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-gray-50 text-gray-700 border-gray-200'}">0.5</button>
-                <button onclick="setQty('${name}', 1)" class="px-2.5 py-1.5 rounded-xl border font-bold text-xs ${item.qty === 1 ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-gray-50 text-gray-700 border-gray-200'}">1</button>
-                <button onclick="setQty('${name}', 2)" class="px-2.5 py-1.5 rounded-xl border font-bold text-xs ${item.qty === 2 ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-gray-50 text-gray-700 border-gray-200'}">2</button>
+                <button data-action="set-veg-qty" data-veg-name="${escapeHtml(name)}" data-qty="0.5" class="px-2.5 py-1.5 rounded-xl border font-bold text-xs ${item.qty === 0.5 ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-gray-50 text-gray-700 border-gray-200'}">0.5</button>
+                <button data-action="set-veg-qty" data-veg-name="${escapeHtml(name)}" data-qty="1" class="px-2.5 py-1.5 rounded-xl border font-bold text-xs ${item.qty === 1 ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-gray-50 text-gray-700 border-gray-200'}">1</button>
+                <button data-action="set-veg-qty" data-veg-name="${escapeHtml(name)}" data-qty="2" class="px-2.5 py-1.5 rounded-xl border font-bold text-xs ${item.qty === 2 ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-gray-50 text-gray-700 border-gray-200'}">2</button>
               </div>
 
               <!-- ปุ่มบวก/ลบ ตัวใหญ่ -->
               <div class="flex items-center rounded-xl overflow-hidden border border-gray-300 bg-white shadow-sm">
-                <button onclick="changeQty('${name}', -1)" class="w-10 h-10 bg-gray-100 active:bg-gray-200 text-gray-800 font-extrabold text-lg flex items-center justify-center">-</button>
-                <span class="w-12 text-center font-extrabold text-base text-gray-800">${item.qty}</span>
-                <button onclick="changeQty('${name}', 1)" class="w-10 h-10 bg-emerald-600 active:bg-emerald-700 text-white font-extrabold text-lg flex items-center justify-center">+</button>
+                <button data-action="change-veg-qty" data-veg-name="${escapeHtml(name)}" data-delta="-1" class="w-10 h-10 bg-gray-100 active:bg-gray-200 text-gray-800 font-extrabold text-lg flex items-center justify-center">-</button>
+                <span class="w-12 text-center font-extrabold text-base text-gray-800">${escapeHtml(item.qty)}</span>
+                <button data-action="change-veg-qty" data-veg-name="${escapeHtml(name)}" data-delta="1" class="w-10 h-10 bg-emerald-600 active:bg-emerald-700 text-white font-extrabold text-lg flex items-center justify-center">+</button>
               </div>
             </div>
           </div>
@@ -479,7 +510,7 @@
     // ================== SUBMIT ORDER ==================
     async function submitOrder() {
       if (!currentShop) {
-        alert("กรุณาระบุชื่อร้านก่อนครับ (แตะปุ่ม ⚙️ สลับ/สร้างลิงก์ ด้านบน)");
+        alert("ไม่พบข้อมูลร้านค้า กรุณาเปิดลิงก์สั่งซื้อของร้านที่ได้รับจากแม่ทิพย์");
         return;
       }
 
@@ -487,7 +518,8 @@
         name: name,
         qty: cartItems[name] ? cartItems[name].qty : 1,
         unit: cartItems[name] ? cartItems[name].unit : 'กก.'
-      }));
+      })).filter(item => vegetables.some(vegetable =>
+        vegetable.name === item.name && String(vegetable.status || "ACTIVE").trim().toUpperCase() !== "HIDDEN"));
       const addOn = document.getElementById('addonText').value.trim();
 
       if (items.length === 0 && !addOn) {
@@ -516,11 +548,16 @@
         const result = await res.json();
 
         if (result.success) {
+          try {
+            localStorage.removeItem(historyCacheKey());
+          } catch (error) {
+            console.warn("ล้างแคชประวัติการสั่งซื้อไม่สำเร็จ", error);
+          }
           alert(`✅ สั่งของเรียบร้อยแล้ว!\nร้าน: ${currentShop}\nรอบตลาดเช้าพรุ่งนี้`);
           document.getElementById('addonText').value = "";
           switchTab(1);
         } else {
-          alert("เกิดข้อผิดพลาด: " + result.error);
+          alert("เกิดข้อผิดพลาด: " + (result.error || result.message || "ไม่สามารถส่งคำสั่งซื้อได้"));
         }
       } catch (e) {
         alert("ส่งข้อมูลไม่สำเร็จ กรุณาลองใหม่อีกครั้ง");
@@ -540,40 +577,59 @@
         }
         modal.classList.remove('hidden');
         const box = document.getElementById('historyContent');
-        box.innerHTML = '<p class="text-center text-gray-400 py-6">กำลังโหลดประวัติ...</p>';
+        const key = historyCacheKey();
+        let cachedHistory = null;
 
         try {
-          const res = await fetch(`${APPS_SCRIPT_URL}?action=getCustomerHistory&customerName=${encodeURIComponent(currentShop)}`);
-          const data = await res.json();
-          if (data.success && data.orders && data.orders.length > 0) {
-            box.innerHTML = data.orders.map(o => `
-              <div class="bg-gray-50 border border-gray-200 p-3.5 rounded-2xl space-y-1.5">
-                <div class="flex justify-between items-center text-xs pb-1.5 border-b">
-                  <span class="font-bold text-gray-700">รอบวันที่: ${o.orderDate}</span>
-                  <span class="px-2.5 py-0.5 rounded-full ${o.status === 'จัดแล้ว' ? 'bg-emerald-100 text-emerald-700 font-bold' : 'bg-amber-100 text-amber-700 font-bold'}">${o.status}</span>
-                </div>
-                <div class="pt-1 text-sm space-y-1.5">
-                  ${o.items.map(it => {
-                    const isEdited = it.originalQty !== undefined && Number(it.originalQty) !== Number(it.qty);
-                    return `
-                      <div class="flex justify-between items-baseline text-gray-800">
-                        <span>• ${it.name}</span>
-                        <div class="text-right">
-                          ${isEdited ? `<span class="line-through text-xs text-gray-400 mr-1">${it.originalQty}</span>` : ''}
-                          <span class="font-extrabold ${isEdited ? 'text-amber-700' : 'text-emerald-800'}">${it.qty} ${it.unit}</span>${isEdited ? `<span class="text-[10px] bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded font-semibold block mt-0.5">แม่ปรับยอด</span>` : ''}
-                        </div>
-                      </div>
-                    `;
-                  }).join('')}
-                </div>
-                ${o.addOnNote ? `<div class="mt-1.5 p-2 bg-yellow-50 rounded-xl text-xs text-amber-900 font-medium"><b>สั่งพิเศษ:</b> ${o.addOnNote}</div>` : ''}
-              </div>
-            `).join('');
-          } else {
-            box.innerHTML = '<p class="text-center text-gray-400 py-6">ไม่มีประวัติการสั่งซื้อ</p>';
+          let stored = null;
+          try {
+            stored = localStorage.getItem(key);
+          } catch (error) {
+            console.warn("อ่านแคชประวัติการสั่งซื้อไม่สำเร็จ", error);
           }
+          if (stored) {
+            try {
+              const parsed = JSON.parse(stored);
+              if (parsed && Array.isArray(parsed.orders) &&
+                  Number.isFinite(parsed.cachedAt) && Date.now() >= parsed.cachedAt &&
+                  Date.now() - parsed.cachedAt < HISTORY_CACHE_TTL) {
+                cachedHistory = parsed.orders;
+              } else {
+                try {
+                  localStorage.removeItem(key);
+                } catch (error) {
+                  console.warn("ล้างแคชประวัติที่หมดอายุไม่สำเร็จ", error);
+                }
+              }
+            } catch (error) {
+              try {
+                localStorage.removeItem(key);
+              } catch (storageError) {
+                console.warn("ล้างแคชประวัติที่ไม่ถูกต้องไม่สำเร็จ", storageError);
+              }
+            }
+          }
+
+          if (cachedHistory) {
+            renderOrderHistory(cachedHistory);
+            return;
+          }
+
+          box.innerHTML = '<p class="text-center text-gray-400 py-6">กำลังโหลดประวัติ...</p>';
+          const res = await fetch(`${APPS_SCRIPT_URL}?action=getCustomerHistory&customerName=${encodeURIComponent(currentShop)}`);
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const data = await res.json();
+          if (data.success !== true || !Array.isArray(data.orders)) {
+            throw new Error(data.error || data.message || "รูปแบบข้อมูลประวัติไม่ถูกต้อง");
+          }
+          try {
+            localStorage.setItem(key, JSON.stringify({ orders: data.orders, cachedAt: Date.now() }));
+          } catch (error) {
+            console.warn("บันทึกแคชประวัติการสั่งซื้อไม่สำเร็จ", error);
+          }
+          renderOrderHistory(data.orders);
         } catch (e) {
-          box.innerHTML = '<p class="text-center text-red-500 py-6">โหลดประวัติไม่สำเร็จ</p>';
+          box.innerHTML = `<p class="text-center text-red-500 py-6">โหลดประวัติไม่สำเร็จ: ${escapeHtml(e.message)}</p>`;
         }
       } else {
         modal.classList.add('hidden');
