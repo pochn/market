@@ -18,6 +18,7 @@ window.MarketState = {
   editingContext: null,
   editingVegContext: null,
   selectedImageBase64: "",
+  cutoffTime: "00:00",
   activeTab: "market",
   mainMode: "daily"
 };

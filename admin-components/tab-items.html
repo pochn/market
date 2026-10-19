@@ -19,6 +19,6 @@
     </select>
   </label>
   <p class="text-xs text-gray-500">รูปจะถูกย่อไม่เกิน 400px และแปลงเป็น WebP ก่อนอัปโหลด</p>
-  <button data-action="save-item" id="saveItemButton" class="w-full py-3 bg-emerald-700 text-white rounded-xl font-bold">บันทึกสินค้า</button>
-  <p id="itemStatus" class="hidden text-sm font-semibold"></p>
+  <button data-action="save-item" id="saveItemButton" class="w-full py-3 bg-emerald-700 text-white rounded-xl font-bold transition disabled:cursor-wait disabled:opacity-80">บันทึกสินค้า</button>
+  <p id="itemStatus" class="hidden text-sm font-semibold" role="status" aria-live="polite"></p>
 </section>

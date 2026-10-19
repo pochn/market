@@ -1,6 +1,9 @@
 (function () {
   const config = window.MarketConfig;
   const state = window.MarketState;
+  if (!state.customPrices || typeof state.customPrices !== "object" || Array.isArray(state.customPrices)) {
+    state.customPrices = {};
+  }
 
   const panelByTab = {
     market: "marketPanel",
@@ -8,7 +11,8 @@
     finance: "financePanel",
     itemsList: "itemsListPanel",
     items: "itemsPanel",
-    shops: "shopsPanel"
+    shops: "shopsPanel",
+    settings: "settingsPanel"
   };
 
   const escapeHtml = value => String(value ?? "").replace(/[&<>"']/g, char => ({
@@ -43,6 +47,7 @@
 
   function initializeDate() {
     const date = new Date();
+    if (date.getHours() >= 12) date.setDate(date.getDate() + 1);
     document.getElementById("selectedDate").value = 
       `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
   }
@@ -71,6 +76,9 @@
       if (data.success) {
         state.vegetables = Array.isArray(data.vegetables) ? data.vegetables : [];
         state.allShops = Array.isArray(data.customers) ? data.customers : [];
+        state.cutoffTime = /^\d{2}:\d{2}$/.test(data.cutoffTime || "") ? data.cutoffTime : "00:00";
+        const cutoffInput = document.getElementById("cutoffTimeInput");
+        if (cutoffInput) cutoffInput.value = state.cutoffTime;
         renderVegetablesList();
         renderShops();
       }
@@ -123,7 +131,8 @@
   function renderMarketTab() {
     const list = document.getElementById("summaryList");
     if (!list) return;
-    if (!state.currentOrders.length) {
+    const orders = state.currentOrders.filter(order => String(order.status || "").trim() !== "ยกเลิกแล้ว");
+    if (!orders.length) {
       list.innerHTML = '<div class="text-center py-10 text-gray-400 bg-white rounded-2xl border p-6">ไม่มีรายการสั่งซื้อสำหรับวันที่เลือก</div>';
       const addonSec = document.getElementById("addonSection");
       if (addonSec) addonSec.classList.add("hidden");
@@ -133,7 +142,7 @@
 
     const totals = new Map();
     const addons = [];
-    state.currentOrders.forEach(order => {
+    orders.forEach(order => {
       if (order.addOnNote && order.addOnNote.trim()) {
         addons.push({ shop: order.customerName, note: order.addOnNote });
       }
@@ -177,11 +186,49 @@
     return `${date.getDate()} ${date.toLocaleDateString("th-TH", { month: "short" })} ${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")} น.`;
   }
 
+  function priceStorageKey(item) {
+    return JSON.stringify([item.name, item.unit]);
+  }
+
+  function getUnitPrice(item) {
+    if (item.unitPrice !== undefined && item.unitPrice !== null && item.unitPrice !== "") {
+      return String(item.unitPrice);
+    }
+    const savedPrice = state.customPrices[priceStorageKey(item)];
+    return savedPrice === undefined ? "" : String(savedPrice);
+  }
+
+  function calculateRenderedOrderTotal(card) {
+    const total = [...card.querySelectorAll("[data-line-total]")].reduce(
+      (sum, element) => sum + (Number(element.dataset.lineTotal) || 0), 0);
+    const totalElement = card.querySelector("[data-order-total]");
+    if (totalElement) totalElement.textContent = total.toLocaleString("th-TH", { maximumFractionDigits: 2 });
+  }
+
+  function orderInvoiceText(order, card) {
+    const lines = [...card.querySelectorAll("[data-unit-price]")].map(input => {
+      const item = order.items[Number(input.dataset.index)];
+      const unitPrice = Number(input.value) || 0;
+      const lineTotal = (Number(item.qty) || 0) * unitPrice;
+      return `• ${item.name} ${item.qty} ${item.unit} × ${unitPrice.toLocaleString("th-TH")} = ${lineTotal.toLocaleString("th-TH")} บาท`;
+    });
+    const total = [...card.querySelectorAll("[data-line-total]")].reduce(
+      (sum, element) => sum + (Number(element.dataset.lineTotal) || 0), 0);
+    return [
+      `🧾 ใบส่งของ - ${order.customerName}`,
+      `รอบวันที่ ${order.orderDate}`,
+      ...lines,
+      `ยอดรวมสุทธิ: ${total.toLocaleString("th-TH", { maximumFractionDigits: 2 })} บาท`,
+      `สถานะ: ${order.paymentStatus || "ค้างชำระ"}`,
+      `เลขที่ออเดอร์: ${order.orderId}`
+    ].join("\n");
+  }
+
   function renderPackingTab() {
     const container = document.getElementById("customerCardsContainer");
     if (!container) return;
 
-    const orders = state.currentOrders.map(order => {
+    const orders = state.currentOrders.filter(order => String(order.status || "").trim() !== "ยกเลิกแล้ว").map(order => {
       const items = Array.isArray(order.items) ? order.items : [];
       const checked = items.reduce((count, item, index) =>
         count + (state.packedItems[`${order.orderId}_${index}`] ? 1 : 0), 0);
@@ -205,28 +252,163 @@
           order.checked ? `⚠️ ค้าง ${order.remaining} รายการ (${order.checked}/${order.items.length})` :
             `⏳ ยังไม่ได้ของ (${order.items.length})`;
 
-      return `<article class="rounded-2xl border-2 p-4 shadow-sm space-y-3 ${order.done ? "bg-gray-50 opacity-80" : order.checked ? "bg-amber-50/40 border-amber-400" : "bg-white border-gray-200"}">
-        <div class="flex justify-between items-start border-b pb-2.5 gap-2">
-          <div><h3 class="font-extrabold text-lg">🏪 ${escapeHtml(order.customerName)}</h3>
-            <div class="text-[11px] text-emerald-800">🕐 สั่ง: ${escapeHtml(formatOrderTime(order.timestamp))} · รหัส: ${escapeHtml(order.orderId)}</div></div>
-          <span class="shrink-0 text-xs font-bold">${status}</span>
+      return `<article data-order-card="${escapeHtml(order.orderId)}" class="rounded-2xl border-2 p-2.5 shadow-sm space-y-2 ${order.done ? "bg-gray-50 opacity-80" : order.checked ? "bg-amber-50/40 border-amber-400" : "bg-white border-gray-200"}">
+        <div class="flex justify-between items-start border-b pb-2 gap-2">
+          <div class="min-w-0"><h3 class="font-extrabold text-base truncate">🏪 ${escapeHtml(order.customerName)}</h3>
+            <div class="text-[10px] text-emerald-800 truncate">🕐 ${escapeHtml(formatOrderTime(order.timestamp))} · ${escapeHtml(order.orderId)}</div></div>
+          <div class="flex flex-col items-end gap-1 shrink-0">
+            <span class="text-[10px] font-bold">${status}</span>
+            <button data-action="admin-cancel-order" data-order-id="${escapeHtml(order.orderId)}" data-shop-name="${escapeHtml(order.customerName)}" class="px-2 py-1 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg text-xs font-bold border border-red-200 transition shrink-0" title="ยกเลิกบิลนี้">
+              🗑️ ยกเลิกบิล
+            </button>
+          </div>
         </div>
-        <div class="space-y-2">${order.items.map((item, index) => {
+        <div class="space-y-1.5">${order.items.map((item, index) => {
           const key = `${order.orderId}_${index}`;
           const checked = !!state.packedItems[key];
           const edited = item.originalQty !== undefined && Number(item.originalQty) !== Number(item.qty);
-          return `<div class="p-3 rounded-xl border flex items-center justify-between gap-2 ${checked ? "bg-emerald-100/60 border-emerald-400" : "bg-gray-50 border-gray-200"}">
-            <label class="flex items-center gap-3 flex-1 cursor-pointer">
-              <input type="checkbox" data-action="toggle-packed" data-order="${escapeHtml(order.orderId)}" data-index="${index}" ${checked ? "checked" : ""} class="w-5 h-5 rounded text-emerald-600">
-              <span><strong class="text-base ${checked ? "line-through text-gray-500" : ""}">${escapeHtml(item.name)}</strong>${edited ? `<small class="block text-[11px] text-amber-700 font-semibold">แม่ปรับยอด · เดิมสั่ง <span class="line-through">${escapeHtml(item.originalQty)}</span> → ได้ ${escapeHtml(item.qty)} ${escapeHtml(item.unit)}</small>` : ""}</span>
+          const unitPrice = getUnitPrice(item);
+          const lineTotal = unitPrice === "" ? 0 : (Number(item.qty) || 0) * (Number(unitPrice) || 0);
+          return `<div class="p-2.5 rounded-xl border flex items-center justify-between gap-2 transition-colors ${checked ? "bg-emerald-50/70 border-emerald-300 opacity-70" : "bg-white border-gray-200"}">
+            <label class="flex items-center gap-2.5 min-w-0 flex-1 cursor-pointer">
+              <input type="checkbox" data-action="toggle-packed" data-order="${escapeHtml(order.orderId)}" data-index="${index}" ${checked ? "checked" : ""} class="w-4 h-4 rounded text-emerald-600 shrink-0">
+              <div class="min-w-0">
+                <span class="font-extrabold text-sm text-gray-800 truncate block ${checked ? "line-through text-gray-400" : ""}">${escapeHtml(item.name)}</span>
+                ${edited ? `<span class="text-[10px] text-amber-700 font-semibold block">เดิม ${escapeHtml(item.originalQty)} → ได้ ${escapeHtml(item.qty)}</span>` : ""}
+              </div>
             </label>
-            <span class="font-extrabold whitespace-nowrap">${escapeHtml(item.qty)}${escapeHtml(item.unit)}</span>
-            <button data-action="edit-qty" data-order="${escapeHtml(order.orderId)}" data-index="${index}" class="p-1.5 bg-white border rounded-lg" title="ปรับจำนวน">✏️</button>
+            <div class="flex items-center gap-1.5 shrink-0">
+              <div class="flex items-center gap-1 bg-gray-50 px-2 py-1 rounded-lg border border-gray-200">
+                <span class="font-black text-xs text-gray-800 whitespace-nowrap">${escapeHtml(item.qty)} ${escapeHtml(item.unit)}</span>
+                <button data-action="edit-qty" data-order="${escapeHtml(order.orderId)}" data-index="${index}" class="text-[11px] text-gray-400 hover:text-emerald-700" title="ปรับจำนวน">✏️</button>
+              </div>
+              <span class="text-xs text-gray-400">×</span>
+              <div class="flex items-center">
+                <input type="number" min="0" step="0.5" inputmode="decimal" data-action="change-item-price" data-unit-price data-index="${index}" value="${escapeHtml(unitPrice)}" placeholder="ราคา" aria-label="ราคาต่อหน่วย ${escapeHtml(item.name)}" class="w-16 p-1 text-center font-bold text-xs bg-gray-50 border border-gray-300 rounded-lg focus:bg-white focus:ring-1 focus:ring-emerald-500 focus:outline-none">
+                <span class="text-[10px] text-gray-400 ml-1">฿</span>
+              </div>
+              <span class="w-12 text-right font-black text-xs text-emerald-700 whitespace-nowrap">
+                ${lineTotal > 0 ? `= <span data-line-total="${lineTotal}">${lineTotal.toLocaleString("th-TH", { maximumFractionDigits: 2 })}</span> ฿` : `= <span data-line-total="${lineTotal}">-</span>`}
+              </span>
+            </div>
           </div>`;
         }).join("")}</div>
-        ${order.addOnNote ? `<div class="p-2.5 bg-amber-50 rounded-xl border border-amber-200 text-xs"><strong>📝 สั่งพิเศษ:</strong> ${escapeHtml(order.addOnNote)}</div>` : ""}
+        ${order.addOnNote ? `<div class="p-2 bg-amber-50 rounded-xl border border-amber-200 text-xs"><strong>📝 สั่งพิเศษ:</strong> ${escapeHtml(order.addOnNote)}</div>` : ""}
+        <div class="flex justify-between items-center border-t pt-2">
+          <span class="text-sm font-extrabold text-gray-800">ยอดรวมสุทธิ</span>
+          <strong class="text-base text-emerald-800"><span data-order-total>${(order.items || []).reduce((sum, item) => {
+            const price = getUnitPrice(item);
+            return sum + (price === "" ? 0 : (Number(item.qty) || 0) * (Number(price) || 0));
+          }, 0)
+            .toLocaleString("th-TH", { maximumFractionDigits: 2 })}</span> บาท</strong>
+        </div>
+        <div class="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+          <button data-action="save-order-pricing" data-order="${escapeHtml(order.orderId)}" class="py-2 px-2 bg-emerald-600 text-white rounded-lg text-[11px] font-bold">📤 บันทึกใบส่งของ</button>
+          <button data-action="toggle-payment" data-order="${escapeHtml(order.orderId)}" class="py-2 px-2 rounded-lg text-[11px] font-bold ${order.paymentStatus === "ชำระแล้ว" ? "bg-emerald-100 text-emerald-800" : "bg-red-50 text-red-700"}">${order.paymentStatus === "ชำระแล้ว" ? "🟢 ชำระแล้ว" : "🔴 ค้างชำระ"}</button>
+          <button data-action="share-order-invoice" data-order="${escapeHtml(order.orderId)}" class="col-span-2 sm:col-span-1 py-2 px-2 bg-green-50 border border-green-200 text-green-800 rounded-lg text-[11px] font-bold">📲 แชร์สรุปยอดเข้า LINE</button>
+        </div>
       </article>`;
     }).join("");
+  }
+
+  async function saveOrderPricing(orderId, button) {
+    const order = state.currentOrders.find(item => String(item.orderId) === String(orderId));
+    const card = button.closest("[data-order-card]");
+    if (!order || !card) return;
+    const inputs = [...card.querySelectorAll("[data-unit-price]")];
+    const items = inputs.map(input => {
+      const item = order.items[Number(input.dataset.index)];
+      return { ...item, unitPrice: input.value === "" ? NaN : Number(input.value) };
+    });
+    if (items.some(item => !Number.isFinite(item.unitPrice) || item.unitPrice < 0)) {
+      alert("กรุณากรอกราคาต่อหน่วยให้ครบทุกสินค้า (ราคาต้องไม่ติดลบ)");
+      return;
+    }
+
+    button.disabled = true;
+    const originalLabel = button.textContent;
+    button.textContent = "กำลังบันทึก...";
+    try {
+      const result = await postAction({
+        action: "updateOrderPricing",
+        orderId,
+        items: items.map(({ name, unit, qty, unitPrice }) => ({ name, unit, qty, unitPrice }))
+      });
+      items.forEach((item, index) => {
+        order.items[index].unitPrice = item.unitPrice;
+        state.customPrices[priceStorageKey(item)] = item.unitPrice;
+      });
+      order.totalAmount = Number(result.totalAmount) || 0;
+      order.hasPricing = true;
+      try {
+        localStorage.setItem("market_custom_prices", JSON.stringify(state.customPrices));
+      } catch (error) {
+        console.warn("บันทึกราคาต่อหน่วยไว้ในเครื่องไม่สำเร็จ", error);
+      }
+      renderDashboard();
+      alert(`บันทึกและส่งใบส่งของให้ ${order.customerName} แล้ว · ยอดรวม ${order.totalAmount.toLocaleString("th-TH", { maximumFractionDigits: 2 })} บาท`);
+    } catch (error) {
+      alert(`บันทึกราคาหรือส่งใบส่งของไม่สำเร็จ: ${error.message}`);
+      console.error("บันทึกราคาออเดอร์ไม่สำเร็จ", error);
+    } finally {
+      button.disabled = false;
+      button.textContent = originalLabel;
+    }
+  }
+
+  async function adminCancelOrder(orderId, shopName) {
+    if (!window.confirm(`ยืนยันยกเลิกบิล ${orderId} ของร้าน "${shopName}" ใช่หรือไม่?\n(ยอดผักในตลาดจะถูกหักออกทันที)`)) {
+      return;
+    }
+
+    try {
+      const result = await postAction({ action: "cancelOrder", orderId });
+      if (result.success !== true || String(result.orderId) !== String(orderId)) {
+        throw new Error(result.message || "Apps Script ไม่ยืนยันการยกเลิกบิล");
+      }
+      const order = state.currentOrders.find(item => String(item.orderId) === String(orderId));
+      if (order) order.status = "ยกเลิกแล้ว";
+      renderDashboard();
+    } catch (error) {
+      alert(`ยกเลิกบิลไม่สำเร็จ: ${error.message}`);
+      console.error("แอดมินยกเลิกบิลไม่สำเร็จ", error);
+    }
+  }
+
+  async function togglePaymentStatus(orderId, button) {
+    const order = state.currentOrders.find(item => String(item.orderId) === String(orderId));
+    if (!order) return;
+    const paymentStatus = order.paymentStatus === "ชำระแล้ว" ? "ค้างชำระ" : "ชำระแล้ว";
+    button.disabled = true;
+    try {
+      const result = await postAction({ action: "updatePaymentStatus", orderId, paymentStatus });
+      order.paymentStatus = result.paymentStatus;
+      renderDashboard();
+    } catch (error) {
+      alert(`เปลี่ยนสถานะชำระเงินไม่สำเร็จ: ${error.message}`);
+      console.error("เปลี่ยนสถานะชำระเงินไม่สำเร็จ", error);
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  async function shareOrderInvoice(orderId, button) {
+    const order = state.currentOrders.find(item => String(item.orderId) === String(orderId));
+    const card = button.closest("[data-order-card]");
+    if (!order || !card) return;
+    const inputs = [...card.querySelectorAll("[data-unit-price]")];
+    if (inputs.some(input => input.value === "" || !Number.isFinite(Number(input.value)) || Number(input.value) < 0)) {
+      alert("กรุณากรอกราคาต่อหน่วยให้ครบทุกสินค้า ก่อนแชร์ใบส่งของ");
+      return;
+    }
+
+    const message = orderInvoiceText(order, card);
+    try {
+      await navigator.clipboard.writeText(message);
+    } catch (error) {
+      window.prompt("คัดลอกข้อความสรุปยอดนี้เพื่อส่งให้ลูกค้า:", message);
+    }
+    window.location.href = `line://msg/text/${encodeURIComponent(message)}`;
   }
 
 // ==============================================
@@ -448,12 +630,183 @@
     if (tab === "shops") renderShops();
   }
 
+  function formatPhoneNumber(phone) {
+    if (!phone) return "";
+    let clean = String(phone).replace(/\D/g, "");
+    if (!clean) return "";
+    if (clean.length === 9 && !clean.startsWith("0")) {
+      clean = `0${clean}`;
+    }
+    if (clean.length === 10) {
+      return `${clean.slice(0, 3)}-${clean.slice(3, 6)}-${clean.slice(6)}`;
+    }
+    if (clean.length === 9) {
+      return `${clean.slice(0, 2)}-${clean.slice(2, 5)}-${clean.slice(5)}`;
+    }
+    return clean;
+  }
+
+  function generateShopId() {
+    let maxNum = 0;
+    (state.allShops || []).forEach(shop => {
+      const match = String(shop.id || "").match(/^SH-(\d+)$/i);
+      if (match) maxNum = Math.max(maxNum, parseInt(match[1], 10));
+    });
+    return `SH-${String(maxNum + 1).padStart(3, "0")}`;
+  }
+
+  async function createShop() {
+    const nameInput = document.getElementById("newShopName");
+    const phoneInput = document.getElementById("newShopPhone");
+    const button = document.getElementById("createShopButton");
+    const status = document.getElementById("shopCopyStatus");
+    const name = nameInput.value.trim();
+    const formattedContact = formatPhoneNumber(phoneInput.value.trim());
+
+    if (!name) {
+      status.textContent = "กรุณากรอกชื่อร้านค้า";
+      status.className = "text-xs text-red-700 font-bold";
+      status.classList.remove("hidden");
+      nameInput.focus();
+      return;
+    }
+
+    button.disabled = true;
+    status.textContent = "กำลังบันทึกร้านค้า...";
+    status.className = "text-xs text-emerald-700 font-bold";
+    status.classList.remove("hidden");
+
+    try {
+      const shopId = generateShopId();
+      const result = await postAction({
+        action: "registerShop",
+        shopId,
+        shopName: name,
+        contact: formattedContact
+      });
+      if (result.success !== true) {
+        throw new Error(result.error || result.message || "Apps Script ไม่ยืนยันการบันทึกร้านค้า");
+      }
+
+      const savedShopId = String(result.shopId || shopId);
+      state.allShops.push({ id: savedShopId, name, contact: formattedContact });
+      renderShops();
+      nameInput.value = "";
+      phoneInput.value = "";
+
+      const link = new URL("index.html", window.location.href);
+      link.searchParams.set("id", savedShopId);
+      try {
+        await navigator.clipboard.writeText(link.href);
+        status.textContent = `บันทึกร้าน ${name} (${savedShopId}) และคัดลอกลิงก์แล้ว!`;
+        status.className = "text-xs text-emerald-700 font-bold";
+      } catch (error) {
+        status.textContent = `เพิ่มร้าน "${name}" แล้ว แต่คัดลอกอัตโนมัติไม่ได้ กรุณาคัดลอกลิงก์ด้านล่าง`;
+        status.className = "text-xs text-amber-700 font-bold";
+        window.prompt("ร้านค้าถูกบันทึกแล้ว กรุณาคัดลอกลิงก์นี้:", link.href);
+      }
+      status.classList.remove("hidden");
+    } catch (error) {
+      status.textContent = `เพิ่มร้านค้าไม่สำเร็จ: ${error.message}`;
+      status.className = "text-xs text-red-700 font-bold";
+      status.classList.remove("hidden");
+      console.error("เพิ่มร้านค้าไม่สำเร็จ", error);
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  async function saveCutoffTime() {
+    const input = document.getElementById("cutoffTimeInput");
+    const status = document.getElementById("cutoffTimeStatus");
+    const button = document.getElementById("saveCutoffTimeButton");
+    const cutoffTime = input.value;
+    if (!/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(cutoffTime)) {
+      status.textContent = "กรุณาระบุเวลาตัดรอบให้ถูกต้อง";
+      status.className = "text-xs font-bold text-red-700";
+      status.classList.remove("hidden");
+      return;
+    }
+
+    button.disabled = true;
+    status.textContent = "กำลังบันทึก...";
+    status.className = "text-xs font-bold text-emerald-700";
+    status.classList.remove("hidden");
+    try {
+      const result = await postAction({ action: "updateCutoffTime", cutoffTime });
+      state.cutoffTime = result.cutoffTime;
+      status.textContent = `บันทึกเวลาตัดรอบ ${state.cutoffTime} น. เรียบร้อยแล้ว`;
+      status.className = "text-xs font-bold text-emerald-700";
+    } catch (error) {
+      status.textContent = `บันทึกไม่สำเร็จ: ${error.message}`;
+      status.className = "text-xs font-bold text-red-700";
+      console.error("บันทึกเวลาตัดรอบไม่สำเร็จ", error);
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  function openShopEditor(id) {
+    const shop = state.allShops.find(item => String(item.id) === String(id));
+    if (!shop) return;
+    document.getElementById("editShopId").value = shop.id;
+    document.getElementById("editShopName").value = shop.name;
+    document.getElementById("editShopPhone").value = shop.contact || "";
+    const modal = document.getElementById("editShopModal");
+    if (modal) {
+      modal.classList.remove("hidden");
+      modal.classList.add("flex");
+    }
+  }
+
+  function closeModal(id) {
+    const modal = document.getElementById(id);
+    if (modal) {
+      modal.classList.add("hidden");
+      modal.classList.remove("flex");
+    }
+  }
+
+  async function saveShop() {
+    const id = document.getElementById("editShopId").value;
+    const name = document.getElementById("editShopName").value.trim();
+    const contact = formatPhoneNumber(document.getElementById("editShopPhone").value.trim());
+    if (!name) return alert("กรุณากรอกชื่อร้านค้า");
+    const button = document.getElementById("saveShopButton");
+    if (button) button.disabled = true;
+    try {
+      await postAction({ action: "updateShop", shopId: id, shopName: name, contact });
+      const shop = state.allShops.find(item => String(item.id) === String(id));
+      if (shop) Object.assign(shop, { name, contact });
+      renderShops();
+      closeModal("editShopModal");
+      alert("✅ บันทึกข้อมูลร้านค้าเรียบร้อยแล้ว");
+    } catch (error) {
+      alert(`แก้ไขร้านไม่สำเร็จ: ${error.message}`);
+    } finally {
+      if (button) button.disabled = false;
+    }
+  }
+
+  async function deleteShop(id) {
+    const shop = state.allShops.find(item => String(item.id) === String(id));
+    if (!shop || !confirm(`ยืนยันลบร้าน "${shop.name}"? ลูกค้าจะใช้ลิงก์เดิมสั่งไม่ได้`)) return;
+    try {
+      await postAction({ action: "deleteShop", shopId: id });
+      state.allShops = state.allShops.filter(item => String(item.id) !== String(id));
+      renderShops();
+      alert(`✓ ลบร้าน "${shop.name}" เรียบร้อยแล้ว`);
+    } catch (error) {
+      alert(`ลบร้านไม่สำเร็จ: ${error.message}`);
+    }
+  }
+
   function renderShops() {
     const container = document.getElementById("shopsListContainer");
     if (!container) return;
     const query = (document.getElementById("searchShopInput")?.value || "").trim().toLowerCase();
     const filtered = state.allShops.filter(shop =>
-      `${shop.name} ${shop.id} ${shop.contact || ""}`.toLowerCase().includes(query));
+      `${shop.name} ${shop.id} ${shop.contact || ""} ${formatPhoneNumber(shop.contact)}`.toLowerCase().includes(query));
 
     if (!filtered.length) {
       container.innerHTML = '<div class="text-center py-10 text-gray-400 bg-white rounded-2xl border p-6">ไม่พบรายชื่อร้านค้า</div>';
@@ -469,7 +822,7 @@
             <span class="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center font-bold shrink-0">${index + 1}</span>
             <div class="min-w-0">
               <strong class="block truncate">${escapeHtml(shop.name)}</strong>
-              <small class="text-gray-500 font-mono">${escapeHtml(shop.id)}</small> ${shop.contact ? `<small class="text-gray-500"> · 📞 ${escapeHtml(shop.contact)}</small>` : ""}
+              <small class="text-gray-500 font-mono">${escapeHtml(shop.id)}</small> ${shop.contact ? `<small class="text-gray-500"> · 📞 ${escapeHtml(formatPhoneNumber(shop.contact))}</small>` : ""}
             </div>
           </div>
           <div class="flex items-center gap-1 shrink-0">
@@ -512,8 +865,22 @@
     if (!name) return alert("กรุณากรอกชื่อสินค้า");
     const button = document.getElementById("saveItemButton");
     const status = document.getElementById("itemStatus");
+    const buttonContent = button.innerHTML;
     button.disabled = true;
-    status.classList.add("hidden");
+    button.setAttribute("aria-busy", "true");
+    button.innerHTML = `
+      <svg class="w-5 h-5 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 0 1 8-8v4a4 4 0 0 0-4 4H4z"></path>
+      </svg>
+      <span>${state.selectedImageBase64 ? "กำลังอัปโหลดรูปและบันทึก..." : "กำลังบันทึกสินค้า..."}</span>
+    `;
+    button.classList.add("flex", "items-center", "justify-center", "gap-2", "opacity-80", "cursor-wait");
+    status.textContent = state.selectedImageBase64 ? "กำลังอัปโหลดรูปและบันทึกข้อมูลสินค้า กรุณารอสักครู่" : "กำลังบันทึกข้อมูลสินค้า กรุณารอสักครู่";
+    status.className = "text-sm font-semibold text-emerald-700";
+    status.setAttribute("role", "status");
+    status.setAttribute("aria-live", "polite");
+    status.classList.remove("hidden");
 
     try {
       const result = await postAction({
@@ -544,6 +911,9 @@
       status.classList.remove("hidden");
     } finally {
       button.disabled = false;
+      button.removeAttribute("aria-busy");
+      button.innerHTML = buttonContent;
+      button.classList.remove("flex", "items-center", "justify-center", "gap-2", "opacity-80", "cursor-wait");
     }
   }
 
@@ -565,6 +935,24 @@
     if (!control) return;
 
     switch (control.dataset.action) {
+      case "create-shop":
+        await createShop();
+        break;
+      case "save-cutoff-time":
+        await saveCutoffTime();
+        break;
+      case "edit-shop":
+        openShopEditor(control.dataset.shopId);
+        break;
+      case "close-edit-shop":
+        closeModal("editShopModal");
+        break;
+      case "save-edit-shop":
+        await saveShop();
+        break;
+      case "delete-shop":
+        await deleteShop(control.dataset.shopId);
+        break;
       case "toggle-bought": {
         const key = control.dataset.key;
         state.boughtItems.has(key) ? state.boughtItems.delete(key) : state.boughtItems.add(key);
@@ -580,6 +968,18 @@
         renderPackingTab();
         break;
       }
+      case "save-order-pricing":
+        await saveOrderPricing(control.dataset.order, control);
+        break;
+      case "admin-cancel-order":
+        await adminCancelOrder(control.dataset.orderId, control.dataset.shopName);
+        break;
+      case "toggle-payment":
+        await togglePaymentStatus(control.dataset.order, control);
+        break;
+      case "share-order-invoice":
+        await shareOrderInvoice(control.dataset.order, control);
+        break;
       case "edit-qty": {
         const order = state.currentOrders.find(item => String(item.orderId) === control.dataset.order);
         const item = order && order.items && order.items[Number(control.dataset.index)];
@@ -609,6 +1009,9 @@
         item.originalQty = item.originalQty !== undefined ? item.originalQty : item.qty;
         item.qty = qty;
         await postAction({ action: "updateOrderItems", orderId, items: order.items });
+        order.items.forEach(updatedItem => { delete updatedItem.unitPrice; });
+        order.hasPricing = false;
+        order.totalAmount = 0;
         document.getElementById("editQtyModal").classList.add("hidden");
         document.getElementById("editQtyModal").classList.remove("flex");
         renderDashboard();
@@ -656,6 +1059,26 @@
     // ค้นหาร้านค้า
     document.getElementById("adminApp")?.addEventListener("input", event => {
       if (event.target.id === "searchShopInput") renderShops();
+      if (event.target.matches("[data-unit-price]")) {
+        const input = event.target;
+        const card = input.closest("[data-order-card]");
+        if (!card) return;
+        const order = state.currentOrders.find(item => String(item.orderId) === card.dataset.orderCard);
+        const item = order && order.items[Number(input.dataset.index)];
+        const lineTotal = card.querySelectorAll("[data-line-total]")[Number(input.dataset.index)];
+        if (!item || !lineTotal) return;
+        const unitPrice = input.value === "" ? 0 : Number(input.value);
+        const amount = (Number(item.qty) || 0) * (Number.isFinite(unitPrice) ? unitPrice : 0);
+        lineTotal.dataset.lineTotal = String(amount);
+        lineTotal.textContent = amount.toLocaleString("th-TH", { maximumFractionDigits: 2 });
+        calculateRenderedOrderTotal(card);
+        state.customPrices[priceStorageKey(item)] = input.value;
+        try {
+          localStorage.setItem("market_custom_prices", JSON.stringify(state.customPrices));
+        } catch (error) {
+          console.warn("บันทึกราคาต่อหน่วยไว้ในเครื่องไม่สำเร็จ", error);
+        }
+      }
     });
 
     // อัปโหลดรูปภาพ

@@ -40,6 +40,8 @@
       </div>
     </section>
 
+    <section id="currentOrderCard" class="hidden bg-white p-4 rounded-2xl shadow-sm border border-amber-200 space-y-3"></section>
+
     <!-- แท็บเมนูสลับขั้นตอน (2 Steps) -->
     <div class="flex bg-gray-200/80 p-1.5 rounded-2xl font-bold text-sm shadow-inner">
       <button id="tabBtn1" onclick="switchTab(1)" class="flex-1 py-2.5 rounded-xl bg-white text-emerald-800 shadow transition flex justify-center items-center gap-1.5">
@@ -73,6 +75,12 @@
     <!-- แท็บ 2: ระบุจำนวนและยืนยันสั่ง (Step 2) -->
     <!-- ============================================== -->
     <div id="tabContent2" class="hidden space-y-4">
+      <div id="editingOrderNotice" class="hidden bg-amber-50 border border-amber-200 p-3 rounded-2xl text-sm text-amber-900">
+        <div class="flex items-center justify-between gap-2">
+          <span class="font-bold">กำลังแก้ไขออเดอร์เดิม</span>
+          <button onclick="cancelCustomerEdit()" class="text-xs font-bold underline">เลิกแก้ไข</button>
+        </div>
+      </div>
       <div class="bg-emerald-50 border border-emerald-200 p-3 rounded-2xl flex items-center justify-between">
         <p class="text-xs text-emerald-800 font-bold">✏️ ใส่จำนวนและหน่วยของผักที่คุณเลือก</p>
         <button onclick="switchTab(1)" class="text-xs font-bold text-emerald-700 underline">+ เลือกผักเพิ่ม</button>
@@ -141,6 +149,9 @@
     let selectedVegNames = new Set(); // เก็บชื่อผักที่เลือกใน Step 1
     let cartItems = {}; // { "ผักชี": { qty: 1, unit: "กิโลกรัม" } }
     let marketDate = "";
+    let cutoffTime = "00:00";
+    let currentOrder = null;
+    let editingOrderId = "";
     const HISTORY_CACHE_TTL = 12 * 60 * 60 * 1000;
 
     function escapeHtml(value) {
@@ -251,10 +262,64 @@
       });
     }
 
+    function customerOrderIsLocked(order) {
+      const status = String(order && order.status || "").trim();
+      if (!order || status === "จัดแล้ว" || status === "ยกเลิกแล้ว") return true;
+      const cutoff = new Date(`${order.orderDate}T${cutoffTime}:00+07:00`);
+      return Number.isNaN(cutoff.getTime()) || Date.now() >= cutoff.getTime();
+    }
+
+    function renderCurrentOrderCard() {
+      const card = document.getElementById("currentOrderCard");
+      if (!currentOrder) {
+        card.classList.add("hidden");
+        card.innerHTML = "";
+        return;
+      }
+
+      const locked = customerOrderIsLocked(currentOrder);
+      const hasPricing = currentOrder.hasPricing === true;
+      const itemSummary = (Array.isArray(currentOrder.items) ? currentOrder.items : []).map(item => {
+        const quantity = Number(item.qty) || 0;
+        const unitPrice = Number(item.unitPrice) || 0;
+        const amount = quantity * unitPrice;
+        return `<li class="flex justify-between gap-3">
+          <span>${escapeHtml(item.name)}<span class="block text-xs text-gray-500">${escapeHtml(item.qty)} ${escapeHtml(item.unit)}${hasPricing ? ` × ${unitPrice.toLocaleString("th-TH")} บาท/${escapeHtml(item.unit)}` : ""}</span></span>
+          <span class="font-bold whitespace-nowrap">${hasPricing ? `${amount.toLocaleString("th-TH", { maximumFractionDigits: 2 })} บาท` : `${escapeHtml(item.qty)} ${escapeHtml(item.unit)}`}</span>
+        </li>`;
+      }
+      ).join("");
+      const lockNotice = locked
+        ? '<p class="text-xs font-bold text-red-700">หมดเวลาแก้ไข/ยกเลิกสำหรับรอบนี้แล้ว กรุณาโทรติดต่อแม่ทิพย์โดยตรง</p>'
+        : "";
+      card.innerHTML = `
+        <div class="flex items-start justify-between gap-2">
+          <div>
+            <h3 class="font-extrabold text-gray-900">🧾 ออเดอร์รอบนี้</h3>
+            <p class="text-xs text-gray-500">รอบวันที่ ${escapeHtml(currentOrder.orderDate)} · ${escapeHtml(currentOrder.orderId)}</p>
+          </div>
+          <span class="rounded-full bg-amber-100 text-amber-800 px-2.5 py-1 text-xs font-bold">${escapeHtml(currentOrder.status)}</span>
+        </div>
+        <ul class="space-y-1 text-sm">${itemSummary || '<li class="text-gray-500">ไม่มีรายการผัก</li>'}</ul>
+        ${hasPricing ? `<div class="flex justify-between items-center border-t pt-2">
+          <span class="font-extrabold text-gray-800">ยอดรวมสุทธิ</span>
+          <strong class="text-lg text-emerald-800">${(Number(currentOrder.totalAmount) || 0).toLocaleString("th-TH", { maximumFractionDigits: 2 })} บาท</strong>
+        </div>
+        <p class="text-xs font-bold ${currentOrder.paymentStatus === "ชำระแล้ว" ? "text-emerald-700" : "text-red-700"}">${currentOrder.paymentStatus === "ชำระแล้ว" ? "🟢 ชำระแล้ว" : "🔴 ค้างชำระ"}</p>` : ""}
+        ${currentOrder.addOnNote ? `<p class="bg-yellow-50 p-2 rounded-xl text-xs text-amber-900"><b>สั่งพิเศษ:</b> ${escapeHtml(currentOrder.addOnNote)}</p>` : ""}
+        <div class="grid grid-cols-2 gap-2">
+          <button onclick="editCustomerOrder()" ${locked ? "disabled" : ""} class="py-2.5 rounded-xl text-sm font-bold ${locked ? "bg-gray-100 text-gray-400" : "bg-emerald-600 text-white"}">✏️ แก้ไขรายการ</button>
+          <button onclick="cancelCustomerOrder()" ${locked ? "disabled" : ""} class="py-2.5 rounded-xl text-sm font-bold ${locked ? "bg-gray-100 text-gray-400" : "bg-red-50 text-red-700 border border-red-200"}">🚫 ยกเลิกออเดอร์</button>
+        </div>
+        ${lockNotice}`;
+      card.classList.remove("hidden");
+    }
+
     async function init() {
       calculateMarketDate();
       initShopIdentity();
       initializeDynamicItemActions();
+      window.setInterval(renderCurrentOrderCard, 30000);
 
       try {
         const res = await fetch(`${APPS_SCRIPT_URL}?action=getInitialData`);
@@ -262,6 +327,7 @@
         if (data.success) {
           vegetables = Array.isArray(data.vegetables) ? data.vegetables : [];
           customerDirectory = Array.isArray(data.customers) ? data.customers : [];
+          cutoffTime = /^\d{2}:\d{2}$/.test(data.cutoffTime || "") ? data.cutoffTime : "00:00";
           if (currentShopId) {
             const shop = customerDirectory.find(customer => String(customer.id) === currentShopId);
             if (shop) {
@@ -275,7 +341,7 @@
             }
           }
           renderVegGrid();
-          loadLastOrderForShop();
+          await loadLastOrderForShop();
         }
       } catch (e) {
         alert("เชื่อมต่อฐานข้อมูลไม่สำเร็จ กรุณาตรวจสอบอินเทอร์เน็ต");
@@ -287,6 +353,7 @@
       if (!currentShop) return;
       selectedVegNames.clear();
       cartItems = {};
+      currentOrder = null;
       updateBadgesAndTotals();
       try {
         const res = await fetch(`${APPS_SCRIPT_URL}?action=getCustomerHistory&customerName=${encodeURIComponent(currentShop)}`);
@@ -295,21 +362,92 @@
         if (data.success !== true || !Array.isArray(data.orders)) {
           throw new Error(data.error || data.message || "รูปแบบข้อมูลประวัติไม่ถูกต้อง");
         }
-        if (data.orders.length > 0) {
-          const lastOrder = data.orders[0];
-          (Array.isArray(lastOrder.items) ? lastOrder.items : []).forEach(it => {
+        currentOrder = data.orders.find(order =>
+          order.orderDate === marketDate && String(order.status || "").trim() !== "ยกเลิกแล้ว") || null;
+        const templateOrder = currentOrder || data.orders.find(order => String(order.status || "").trim() !== "ยกเลิกแล้ว");
+        if (templateOrder) {
+          (Array.isArray(templateOrder.items) ? templateOrder.items : []).forEach(it => {
             const vegetable = vegetables.find(item =>
               item.name === it.name && String(item.status || "ACTIVE").trim().toUpperCase() !== "HIDDEN");
             if (!vegetable) return;
             selectedVegNames.add(vegetable.name);
             cartItems[vegetable.name] = { qty: Number(it.qty) || 1, unit: vegetable.unit };
           });
+          document.getElementById("addonText").value = templateOrder.addOnNote || "";
         }
+        renderCurrentOrderCard();
         updateBadgesAndTotals();
         renderVegGrid();
         renderSelectedVegList();
+        if (!currentOrder && selectedVegNames.size > 0) {
+          switchTab(2);
+        }
       } catch (err) {
+        currentOrder = null;
+        renderCurrentOrderCard();
         console.error("โหลดประวัติออเดอร์ล่าสุดไม่สำเร็จ", err);
+      }
+    }
+
+    function editCustomerOrder() {
+      if (!currentOrder || customerOrderIsLocked(currentOrder)) {
+        renderCurrentOrderCard();
+        return;
+      }
+      editingOrderId = currentOrder.orderId;
+      document.getElementById("editingOrderNotice").classList.remove("hidden");
+      document.getElementById("btnSubmit").innerText = "✓ ยืนยันอัปเดตรายการ";
+      renderVegGrid();
+      switchTab(2);
+    }
+
+    async function cancelCustomerEdit() {
+      editingOrderId = "";
+      document.getElementById("editingOrderNotice").classList.add("hidden");
+      document.getElementById("btnSubmit").innerText = "✓ ยืนยันสั่งของตามนี้";
+      await loadLastOrderForShop();
+      switchTab(1);
+    }
+
+    async function cancelCustomerOrder() {
+      if (!currentOrder || customerOrderIsLocked(currentOrder)) {
+        renderCurrentOrderCard();
+        return;
+      }
+      if (!window.confirm("ยืนยันยกเลิกออเดอร์รอบนี้หรือไม่?")) return;
+      try {
+        const response = await fetch(APPS_SCRIPT_URL, {
+          method: "POST",
+          headers: { "Content-Type": "text/plain;charset=utf-8" },
+          body: JSON.stringify({
+            action: "cancelOrder",
+            orderId: currentOrder.orderId,
+            customerName: currentShop
+          })
+        });
+        const result = await response.json();
+        if (!result.success) throw new Error(result.message || result.error || "ยกเลิกออเดอร์ไม่สำเร็จ");
+        try {
+          localStorage.removeItem(historyCacheKey());
+        } catch (error) {
+          console.warn("ล้างแคชประวัติการสั่งซื้อไม่สำเร็จ", error);
+        }
+        currentOrder = null;
+        editingOrderId = "";
+        selectedVegNames.clear();
+        cartItems = {};
+        document.getElementById("addonText").value = "";
+        document.getElementById("editingOrderNotice").classList.add("hidden");
+        document.getElementById("btnSubmit").innerText = "✓ ยืนยันสั่งของตามนี้";
+        updateBadgesAndTotals();
+        renderVegGrid();
+        renderSelectedVegList();
+        renderCurrentOrderCard();
+        switchTab(1);
+        alert("ยกเลิกออเดอร์เรียบร้อยแล้ว");
+      } catch (error) {
+        alert(error.message);
+        await loadLastOrderForShop();
       }
     }
 
@@ -513,6 +651,15 @@
         alert("ไม่พบข้อมูลร้านค้า กรุณาเปิดลิงก์สั่งซื้อของร้านที่ได้รับจากแม่ทิพย์");
         return;
       }
+      if (currentOrder && !editingOrderId) {
+        alert("มีออเดอร์สำหรับรอบนี้แล้ว กรุณากด “แก้ไขรายการ” ที่การ์ดออเดอร์ก่อนอัปเดต");
+        return;
+      }
+      if (editingOrderId && (!currentOrder || customerOrderIsLocked(currentOrder))) {
+        alert("หมดเวลาแก้ไข/ยกเลิกสำหรับรอบนี้แล้ว กรุณาโทรติดต่อแม่ทิพย์โดยตรง");
+        renderCurrentOrderCard();
+        return;
+      }
 
       const items = Array.from(selectedVegNames).map(name => ({
         name: name,
@@ -529,16 +676,17 @@
 
       const btn = document.getElementById('btnSubmit');
       btn.disabled = true;
-      btn.innerText = "กำลังส่งออเดอร์ให้แม่ทิพย์...";
+      btn.innerText = editingOrderId ? "กำลังบันทึกการแก้ไข..." : "กำลังส่งออเดอร์ให้แม่ทิพย์...";
 
       try {
         const payload = {
-          action: "createOrder",
+          action: editingOrderId ? "updateCustomerOrder" : "createOrder",
           orderDate: marketDate,
           customerName: currentShop,
           items: items,
           addOnNote: addOn
         };
+        if (editingOrderId) payload.orderId = editingOrderId;
 
         const res = await fetch(APPS_SCRIPT_URL, {
           method: "POST",
@@ -553,17 +701,29 @@
           } catch (error) {
             console.warn("ล้างแคชประวัติการสั่งซื้อไม่สำเร็จ", error);
           }
-          alert(`✅ สั่งของเรียบร้อยแล้ว!\nร้าน: ${currentShop}\nรอบตลาดเช้าพรุ่งนี้`);
-          document.getElementById('addonText').value = "";
+          const wasEditing = Boolean(editingOrderId);
+          editingOrderId = "";
+          document.getElementById("editingOrderNotice").classList.add("hidden");
+          alert(wasEditing
+            ? `✅ อัปเดตรายการเรียบร้อยแล้ว!\nร้าน: ${currentShop}`
+            : `✅ สั่งของเรียบร้อยแล้ว!\nร้าน: ${currentShop}\nรอบตลาดเช้าพรุ่งนี้`);
+          await loadLastOrderForShop();
           switchTab(1);
         } else {
-          alert("เกิดข้อผิดพลาด: " + (result.error || result.message || "ไม่สามารถส่งคำสั่งซื้อได้"));
+          throw new Error(result.error || result.message || "ไม่สามารถส่งคำสั่งซื้อได้");
         }
       } catch (e) {
-        alert("ส่งข้อมูลไม่สำเร็จ กรุณาลองใหม่อีกครั้ง");
+        alert("ส่งข้อมูลไม่สำเร็จ: " + e.message);
+        if (editingOrderId) {
+          await loadLastOrderForShop();
+          if (!currentOrder || customerOrderIsLocked(currentOrder)) {
+            editingOrderId = "";
+            document.getElementById("editingOrderNotice").classList.add("hidden");
+          }
+        }
       } finally {
         btn.disabled = false;
-        btn.innerText = "✓ ยืนยันสั่งของตามนี้";
+        btn.innerText = editingOrderId ? "✓ ยืนยันอัปเดตรายการ" : "✓ ยืนยันสั่งของตามนี้";
       }
     }
 

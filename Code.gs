@@ -4,7 +4,81 @@
 const SHEET_ORDERS = "Orders";
 const SHEET_SHOPS  = "Shops";
 const SHEET_ITEMS  = "Items";
+const SHEET_SETTINGS = "Settings";
 const DRIVE_IMAGE_FOLDER_ID = "1SCeXszk1f7EHck0l5ANZdfz3byPtOKVR";
+
+function getSettingsSheet() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = ss.getSheetByName(SHEET_SETTINGS);
+  if (!sheet) {
+    sheet = ss.insertSheet(SHEET_SETTINGS);
+  }
+  if (sheet.getLastRow() === 0) {
+    sheet.appendRow(["Key", "Value"]);
+  }
+  return sheet;
+}
+
+function getCutoffTime() {
+  const sheet = getSettingsSheet();
+  const rows = sheet.getDataRange().getValues();
+  for (let i = 1; i < rows.length; i++) {
+    if (String(rows[i][0]).trim() === "cutoffTime") {
+      const value = rows[i][1];
+      if (value instanceof Date) {
+        return Utilities.formatDate(value, "Asia/Bangkok", "HH:mm");
+      }
+      if (typeof value === "number" && value >= 0 && value < 1) {
+        const minutes = Math.round(value * 24 * 60) % (24 * 60);
+        return `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
+      }
+      const match = String(value || "").trim().match(/^(\d{2}):(\d{2})$/);
+      return match && Number(match[1]) <= 23 && Number(match[2]) <= 59
+        ? `${match[1]}:${match[2]}`
+        : "00:00";
+    }
+  }
+  sheet.getRange(sheet.getLastRow() + 1, 2).setNumberFormat("@");
+  sheet.appendRow(["cutoffTime", "00:00"]);
+  return "00:00";
+}
+
+function isCustomerOrderLocked(row) {
+  const status = String(row[6] || "").trim();
+  if (status === "จัดแล้ว" || status === "ยกเลิกแล้ว") return true;
+
+  const orderDate = formatDate(row[2]);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(orderDate)) return true;
+  const cutoffTime = getCutoffTime();
+  const now = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd HH:mm:ss");
+  return now >= `${orderDate} ${cutoffTime}:00`;
+}
+
+function findOrderRow(orderSheet, orderId) {
+  if (!orderSheet || !orderId) return -1;
+  const rows = orderSheet.getDataRange().getValues();
+  for (let i = 1; i < rows.length; i++) {
+    if (String(rows[i][0]) === String(orderId)) return i + 1;
+  }
+  return -1;
+}
+
+function validateCustomerOrderItems(items, itemsSheet) {
+  if (!Array.isArray(items)) return false;
+  const itemRows = itemsSheet && itemsSheet.getLastRow() > 1
+    ? itemsSheet.getDataRange().getValues().slice(1)
+    : [];
+  return items.every(item => {
+    if (!item || typeof item.name !== "string" || !item.name.trim() ||
+        typeof item.unit !== "string" || !item.unit.trim() ||
+        !isFinite(Number(item.qty)) || Number(item.qty) <= 0) {
+      return false;
+    }
+    const matchingRows = itemRows.filter(row => String(row[1]) === item.name);
+    return matchingRows.length > 0 && matchingRows.some(row =>
+      String(row[4] || "ACTIVE").trim().toUpperCase() !== "HIDDEN");
+  });
+}
 
 function ensureItemStatusColumn(sheet) {
   const header = sheet.getRange(1, 5).getValue();
@@ -79,7 +153,12 @@ function doGet(e) {
         }));
       }
       
-      return responseJSON({ success: true, vegetables: vegetables, customers: customers });
+      return responseJSON({
+        success: true,
+        vegetables: vegetables,
+        customers: customers,
+        cutoffTime: getCutoffTime()
+      });
     }
     
     // 1.2 ดึงออเดอร์สำหรับหน้า Admin
@@ -155,7 +234,9 @@ function doGet(e) {
           status: r[6] || "รอดำเนินการ",
           notes: r[7] || "",
           paymentStatus: billingColumns.Payment ? (r[billingColumns.Payment - 1] || "ค้างชำระ") : "ค้างชำระ",
-          totalAmount: billingColumns.TotalAmount ? (Number(r[billingColumns.TotalAmount - 1]) || 0) : 0
+          totalAmount: billingColumns.TotalAmount ? (Number(r[billingColumns.TotalAmount - 1]) || 0) : 0,
+          hasPricing: savedPrices.length > 0 && parsedItems.every(item =>
+            Object.prototype.hasOwnProperty.call(item, "unitPrice"))
         };
       });
       
@@ -181,6 +262,7 @@ function doGet(e) {
       }
       
       const rows = orderSheet.getDataRange().getValues().slice(1);
+      const billingColumns = getOrderBillingColumns(orderSheet, false);
       const customerOrders = rows
         .filter(r => String(r[3]).trim() === String(customerName).trim())
         .reverse()
@@ -194,22 +276,34 @@ function doGet(e) {
           } catch (err) {
             rawItems = [];
           }
+
+          const savedPrices = parseUnitPrices(
+            billingColumns.UnitPrices ? r[billingColumns.UnitPrices - 1] : ""
+          );
+          const priceMap = {};
+          savedPrices.forEach(saved => {
+            priceMap[`${saved.name}_${saved.unit}`] = saved.unitPrice;
+          });
           
           const parsedItems = rawItems.map(it => {
-            if (it.itemId && itemMap[it.itemId]) {
-              return {
+            const item = it.itemId && itemMap[it.itemId]
+              ? {
                 name: itemMap[it.itemId].name,
                 qty: it.qty,
                 originalQty: it.originalQty,
                 unit: itemMap[it.itemId].unit
+              }
+              : {
+                name: it.name || it.itemId || "ไม่ระบุ",
+                qty: it.qty || 1,
+                originalQty: it.originalQty,
+                unit: it.unit || "กก."
               };
+            const priceKey = `${item.name}_${item.unit}`;
+            if (Object.prototype.hasOwnProperty.call(priceMap, priceKey)) {
+              item.unitPrice = priceMap[priceKey];
             }
-            return {
-              name: it.name || it.itemId || "ไม่ระบุ",
-              qty: it.qty || 1,
-              originalQty: it.originalQty,
-              unit: it.unit || "กก."
-            };
+            return item;
           });
           
           return {
@@ -219,7 +313,11 @@ function doGet(e) {
             items: parsedItems,
             addOnNote: r[5] || "",
             status: r[6] || "รอดำเนินการ",
-            notes: r[7] || ""
+            notes: r[7] || "",
+            paymentStatus: billingColumns.Payment ? (r[billingColumns.Payment - 1] || "ค้างชำระ") : "ค้างชำระ",
+            totalAmount: billingColumns.TotalAmount ? (Number(r[billingColumns.TotalAmount - 1]) || 0) : 0,
+            hasPricing: savedPrices.length > 0 && parsedItems.every(item =>
+              Object.prototype.hasOwnProperty.call(item, "unitPrice"))
           };
         });
         
@@ -285,6 +383,73 @@ function doPost(e) {
       
       return responseJSON({ success: true, orderId: orderId });
     }
+
+    if (data.action === "cancelOrder" || data.action === "updateCustomerOrder") {
+      const orderId = String(data.orderId || "").trim();
+      const rowNumber = findOrderRow(orderSheet, orderId);
+      if (rowNumber < 0) {
+        return responseJSON({ success: false, message: "Order not found" });
+      }
+
+      const row = orderSheet.getRange(rowNumber, 1, 1, Math.max(orderSheet.getLastColumn(), 8)).getValues()[0];
+      if (data.action === "cancelOrder" && !data.customerName) {
+        orderSheet.getRange(rowNumber, 7).setValue("ยกเลิกแล้ว");
+        return responseJSON({ success: true, orderId: orderId });
+      }
+      if (!data.customerName || String(row[3]).trim() !== String(data.customerName).trim()) {
+        return responseJSON({ success: false, message: "Order does not belong to this customer" });
+      }
+      if (isCustomerOrderLocked(row)) {
+        return responseJSON({ success: false, message: "หมดเวลาแก้ไข/ยกเลิกสำหรับรอบนี้แล้ว กรุณาโทรติดต่อแม่ทิพย์โดยตรง" });
+      }
+
+      if (data.action === "cancelOrder") {
+        orderSheet.getRange(rowNumber, 7).setValue("ยกเลิกแล้ว");
+        return responseJSON({ success: true, orderId: orderId });
+      }
+
+      if (!validateCustomerOrderItems(data.items, itemsSheet) ||
+          (data.addOnNote !== undefined && typeof data.addOnNote !== "string")) {
+        return responseJSON({ success: false, message: "Invalid order items" });
+      }
+      const addOnNote = data.addOnNote === undefined ? row[5] : data.addOnNote;
+      if (data.items.length === 0 && !String(addOnNote || "").trim()) {
+        return responseJSON({ success: false, message: "Order must contain items or an add-on note" });
+      }
+      orderSheet.getRange(rowNumber, 5, 1, 2).setValues([[
+        JSON.stringify(data.items.map(item => ({
+          name: item.name.trim(),
+          qty: Number(item.qty),
+          unit: item.unit.trim()
+        }))),
+        addOnNote || ""
+      ]]);
+      const billingColumns = getOrderBillingColumns(orderSheet, false);
+      if (billingColumns.UnitPrices) orderSheet.getRange(rowNumber, billingColumns.UnitPrices).clearContent();
+      if (billingColumns.TotalAmount) orderSheet.getRange(rowNumber, billingColumns.TotalAmount).clearContent();
+      if (billingColumns.Payment) orderSheet.getRange(rowNumber, billingColumns.Payment).setValue("ค้างชำระ");
+      return responseJSON({ success: true, orderId: orderId });
+    }
+
+    if (data.action === "updateCutoffTime") {
+      const cutoffTime = String(data.cutoffTime || "").trim();
+      const match = cutoffTime.match(/^(\d{2}):(\d{2})$/);
+      if (!match || Number(match[1]) > 23 || Number(match[2]) > 59) {
+        return responseJSON({ success: false, message: "Invalid cutoff time" });
+      }
+      const settingsSheet = getSettingsSheet();
+      const rows = settingsSheet.getDataRange().getValues();
+      for (let i = 1; i < rows.length; i++) {
+        if (String(rows[i][0]).trim() === "cutoffTime") {
+          settingsSheet.getRange(i + 1, 2).setNumberFormat("@");
+          settingsSheet.getRange(i + 1, 2).setValue(cutoffTime);
+          return responseJSON({ success: true, cutoffTime: cutoffTime });
+        }
+      }
+      settingsSheet.getRange(settingsSheet.getLastRow() + 1, 2).setNumberFormat("@");
+      settingsSheet.appendRow(["cutoffTime", cutoffTime]);
+      return responseJSON({ success: true, cutoffTime: cutoffTime });
+    }
     
     // 2.2 อัปเดตสถานะออเดอร์โดยรวม (admin.html)
     if (data.action === "updateStatus") {
@@ -310,6 +475,9 @@ function doPost(e) {
       for (let i = 1; i < rows.length; i++) {
         if (rows[i][0] === orderId) {
           orderSheet.getRange(i + 1, 5).setValue(JSON.stringify(updatedItems));
+          const billingColumns = getOrderBillingColumns(orderSheet, false);
+          if (billingColumns.UnitPrices) orderSheet.getRange(i + 1, billingColumns.UnitPrices).clearContent();
+          if (billingColumns.TotalAmount) orderSheet.getRange(i + 1, billingColumns.TotalAmount).clearContent();
           return responseJSON({ success: true });
         }
       }
@@ -460,11 +628,22 @@ function doPost(e) {
 
     // 2.5 ลงทะเบียนร้านค้าใหม่พร้อมรหัส ID ภาษาอังกฤษ (admin.html)
     if (data.action === "registerShop") {
-      const shopId = data.shopId;
-      const shopName = data.shopName;
-      const contact = data.contact || "";
-      
-      // บันทึก: ShopID, ShopName, Contact
+      const shopId = String(data.shopId || "").trim();
+      const shopName = String(data.shopName || "").trim();
+      const rawContact = data.contact ? String(data.contact).trim() : "";
+      const contact = rawContact ? "'" + rawContact : "";
+      if (!shopId || !shopName) {
+        return responseJSON({ success: false, message: "Shop ID and shop name are required" });
+      }
+      if (!shopsSheet) {
+        return responseJSON({ success: false, message: "Shops sheet not found" });
+      }
+
+      const rows = shopsSheet.getDataRange().getValues();
+      if (rows.slice(1).some(row => String(row[0]) === shopId)) {
+        return responseJSON({ success: false, message: "Shop ID already exists" });
+      }
+
       shopsSheet.appendRow([shopId, shopName, contact]);
       return responseJSON({ success: true, shopId: shopId });
     }

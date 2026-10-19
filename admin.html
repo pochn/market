@@ -66,10 +66,10 @@
     </div>
 
     <!-- ============================================== -->
-    <!-- 2. เมนูนำทางของโหมดหลังบ้าน (3 แท็บจัดการ) -->
+    <!-- 2. เมนูนำทางของโหมดหลังบ้าน -->
     <!-- ============================================== -->
     <div id="mgmtNavSection" class="hidden">
-      <nav class="grid grid-cols-3 gap-1 bg-gray-200/80 p-1 rounded-2xl font-bold text-xs shadow-inner">
+      <nav class="grid grid-cols-4 gap-1 bg-gray-200/80 p-1 rounded-2xl font-bold text-xs shadow-inner">
         <button data-tab="itemsList" class="tab-button py-2.5 rounded-xl bg-white text-emerald-800 shadow transition flex justify-center items-center gap-1">
           <span>🥬 คลังผักทั้งหมด</span>
         </button>
@@ -78,6 +78,9 @@
         </button>
         <button data-tab="shops" class="tab-button py-2.5 rounded-xl text-gray-500 transition flex justify-center items-center gap-1">
           <span>🏪 ร้านค้า & ลิงก์</span>
+        </button>
+        <button data-tab="settings" class="tab-button py-2.5 rounded-xl text-gray-500 transition flex justify-center items-center gap-1">
+          <span>⏰ ตั้งค่า</span>
         </button>
       </nav>
     </div>
@@ -155,6 +158,22 @@
 
     <!-- แผง 6: รายชื่อร้านค้า & ลิงก์ -->
     <section id="shopsPanel" class="hidden space-y-3">กำลังโหลด...</section>
+
+    <!-- แผงตั้งค่าระบบ -->
+    <section id="settingsPanel" class="hidden space-y-3">
+      <div class="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm space-y-3">
+        <div>
+          <h2 class="font-extrabold text-lg text-gray-900">⏰ เวลาตัดรอบออเดอร์</h2>
+          <p class="text-xs text-gray-500 mt-1">หลังเวลานี้ ลูกค้าจะไม่สามารถแก้ไขหรือยกเลิกออเดอร์ของรอบวันที่นั้นได้</p>
+        </div>
+        <label for="cutoffTimeInput" class="block text-xs font-bold text-gray-600">เวลาตัดรอบ (เวลาไทย)</label>
+        <div class="flex gap-2">
+          <input type="time" id="cutoffTimeInput" value="00:00" class="flex-1 p-3 border rounded-xl text-lg font-bold focus:ring-2 focus:ring-emerald-500 focus:outline-none">
+          <button data-action="save-cutoff-time" id="saveCutoffTimeButton" class="px-4 bg-emerald-600 text-white rounded-xl font-bold shadow">บันทึก</button>
+        </div>
+        <p id="cutoffTimeStatus" class="hidden text-xs font-bold"></p>
+      </div>
+    </section>
 
   </main>
 
