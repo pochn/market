@@ -24,10 +24,12 @@
     <div class="max-w-md mx-auto space-y-1.5">
       <div class="flex justify-between items-center">
         <h1 class="text-lg font-black tracking-tight">🥬 ตลาดสดแม่ทิพย์</h1>
-        <div class="flex items-center gap-1 bg-emerald-800/90 p-0.5 rounded-lg border border-emerald-500">
-          <button onclick="changeFontSize('small')" class="px-2 py-0.5 rounded text-xs font-bold text-white hover:bg-emerald-700" title="ตัวหนังสือปกติ">A</button>
-          <button onclick="changeFontSize('medium')" class="px-2 py-0.5 rounded text-sm font-bold text-white hover:bg-emerald-700" title="ตัวหนังสือใหญ่">A+</button>
-          <button onclick="changeFontSize('large')" class="px-2 py-0.5 rounded text-base font-bold text-amber-300 hover:bg-emerald-700" title="ตัวหนังสือใหญ่พิเศษ">A++</button>
+        <div class="flex items-center gap-0.5 bg-emerald-800/90 p-0.5 rounded-lg border border-emerald-500" role="group" aria-label="ปรับขนาดตัวอักษร">
+          <button onclick="changeFontSize('xsmall')" data-font-size="xsmall" class="customer-font-size-button px-1.5 py-0.5 rounded text-[10px] font-bold text-white hover:bg-emerald-700 whitespace-nowrap" title="ตัวหนังสือเล็กที่สุด" aria-label="ตัวหนังสือเล็กที่สุด A-" aria-pressed="false">A-</button>
+          <button onclick="changeFontSize('small')" data-font-size="small" class="customer-font-size-button px-1.5 py-0.5 rounded text-xs font-bold text-white hover:bg-emerald-700 whitespace-nowrap" title="ตัวหนังสือปกติ" aria-label="ตัวหนังสือปกติ A" aria-pressed="false">A</button>
+          <button onclick="changeFontSize('medium')" data-font-size="medium" class="customer-font-size-button px-1.5 py-0.5 rounded text-sm font-bold bg-white text-emerald-900 shadow whitespace-nowrap" title="ตัวหนังสือใหญ่" aria-label="ตัวหนังสือใหญ่ A+" aria-pressed="true">A+</button>
+          <button onclick="changeFontSize('large')" data-font-size="large" class="customer-font-size-button px-1.5 py-0.5 rounded text-sm font-bold text-white hover:bg-emerald-700 whitespace-nowrap" title="ตัวหนังสือใหญ่พิเศษ" aria-label="ตัวหนังสือใหญ่พิเศษ A++" aria-pressed="false">A++</button>
+          <button onclick="changeFontSize('xlarge')" data-font-size="xlarge" class="customer-font-size-button px-1.5 py-0.5 rounded text-sm font-bold text-white hover:bg-emerald-700 whitespace-nowrap" title="ตัวหนังสือใหญ่ที่สุด" aria-label="ตัวหนังสือใหญ่ที่สุด A+++" aria-pressed="false">A+++</button>
         </div>
       </div>
       <div class="flex justify-between items-center text-xs">
@@ -194,9 +196,17 @@
     }
 
     function changeFontSize(size) {
-      const fontSizes = { small: "100%", medium: "115%", large: "130%" };
+      const fontSizes = { xsmall: "85%", small: "100%", medium: "115%", large: "130%", xlarge: "145%" };
       if (!Object.prototype.hasOwnProperty.call(fontSizes, size)) return;
       document.documentElement.style.fontSize = fontSizes[size];
+      document.querySelectorAll(".customer-font-size-button").forEach(button => {
+        const isActive = button.dataset.fontSize === size;
+        button.setAttribute("aria-pressed", String(isActive));
+        button.classList.toggle("bg-white", isActive);
+        button.classList.toggle("text-emerald-900", isActive);
+        button.classList.toggle("shadow", isActive);
+        button.classList.toggle("text-white", !isActive);
+      });
       try {
         localStorage.setItem("user_font_size", size);
       } catch (error) {
@@ -430,7 +440,7 @@
       let savedFontSize = "medium";
       try {
         const storedFontSize = localStorage.getItem("user_font_size");
-        if (["small", "medium", "large"].includes(storedFontSize)) savedFontSize = storedFontSize;
+        if (["xsmall", "small", "medium", "large", "xlarge"].includes(storedFontSize)) savedFontSize = storedFontSize;
       } catch (error) {
         console.warn("อ่านขนาดตัวอักษรที่บันทึกไว้ไม่สำเร็จ", error);
       }

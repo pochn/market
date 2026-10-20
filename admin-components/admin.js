@@ -25,7 +25,7 @@
     }
   }
 
-  const adminFontSizes = { small: "100%", medium: "115%", large: "130%" };
+  const adminFontSizes = { xsmall: "85%", small: "100%", medium: "115%", large: "130%", xlarge: "145%" };
 
   function setAdminFontSize(size) {
     if (!Object.prototype.hasOwnProperty.call(adminFontSizes, size)) return;
@@ -36,8 +36,7 @@
       button.classList.toggle("bg-white", isActive);
       button.classList.toggle("text-emerald-900", isActive);
       button.classList.toggle("shadow", isActive);
-      button.classList.toggle("text-emerald-100", !isActive && button.dataset.fontSize !== "large");
-      button.classList.toggle("text-amber-300", !isActive && button.dataset.fontSize === "large");
+      button.classList.toggle("text-emerald-100", !isActive);
     });
     try {
       localStorage.setItem("admin_font_size", size);
