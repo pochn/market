@@ -526,15 +526,15 @@
       const bought = state.boughtItems.has(item.key);
       return `
       <button data-action="toggle-bought" data-key="${escapeHtml(item.key)}"
-        class="w-full text-left p-3.5 rounded-2xl border-2 flex items-center justify-between gap-3 shadow-sm transition ${bought ? "checked-box bg-gray-50 border-gray-200" : "bg-white border-gray-200 hover:border-emerald-300"}">
-        <span class="flex items-center gap-3 min-w-0">
-          <input type="checkbox" ${bought ? "checked" : ""} tabindex="-1" class="w-6 h-6 rounded text-emerald-600 pointer-events-none shrink-0">
+        class="w-full text-left py-3.5 px-4 rounded-2xl border-2 flex items-center justify-between gap-3 shadow-sm transition ${bought ? "checked-box bg-gray-50 border-gray-200" : "bg-white border-gray-200 hover:border-emerald-300"}">
+        <span class="flex items-center gap-3.5 min-w-0">
+          <input type="checkbox" ${bought ? "checked" : ""} tabindex="-1" class="w-6 h-6 rounded text-emerald-600 pointer-events-none shrink-0 ml-0.5">
           <span class="min-w-0">
             <strong class="block text-lg truncate ${bought ? "line-through text-gray-400" : "text-gray-900"}">${escapeHtml(item.name)}</strong>
             <small class="text-gray-500 block truncate">ร้านที่สั่ง: ${escapeHtml(item.shops.join(", "))}</small>
           </span>
         </span>
-        <span class="text-right whitespace-nowrap shrink-0">
+        <span class="text-right whitespace-nowrap shrink-0 pr-1">
           <strong class="text-2xl text-emerald-700 ${bought ? "line-through text-gray-400" : ""}">${escapeHtml(item.qty)}</strong>
           <small class="block text-gray-600">${escapeHtml(item.unit)}</small>
         </span>
