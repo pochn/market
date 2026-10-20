@@ -107,7 +107,7 @@ function getOrderBillingColumns(sheet, createMissing) {
   let headers = sheet.getRange(1, 1, 1, lastColumn).getValues()[0];
   const columns = {};
 
-  ["Payment", "UnitPrices", "TotalAmount", "InvoiceSentAt"].forEach(name => {
+  ["Payment", "UnitPrices", "TotalAmount", "InvoiceSentAt", "AddOnPrice", "AdminCancelledAt"].forEach(name => {
     let index = headers.findIndex(header => String(header).trim().toLowerCase() === name.toLowerCase());
     if (index < 0 && createMissing) {
       index = lastColumn;
@@ -118,6 +118,21 @@ function getOrderBillingColumns(sheet, createMissing) {
     columns[name] = index < 0 ? 0 : index + 1;
   });
   return columns;
+}
+
+function getOrderNotesColumn(sheet, createMissing) {
+  const lastColumn = Math.max(sheet.getLastColumn(), 8);
+  const headers = sheet.getRange(1, 1, 1, lastColumn).getValues()[0];
+  const existingIndex = headers.findIndex(header =>
+    ["notes", "หมายเหตุ"].includes(String(header).trim().toLowerCase())
+  );
+  if (existingIndex >= 0) return existingIndex + 1;
+  if (!createMissing) return 8;
+
+  const defaultIndex = 7;
+  const column = String(headers[defaultIndex] || "").trim() ? lastColumn + 1 : defaultIndex + 1;
+  sheet.getRange(1, column).setValue("Notes");
+  return column;
 }
 
 function parseUnitPrices(value) {
@@ -231,6 +246,7 @@ function doGet(e) {
       
       const rows = orderSheet.getDataRange().getValues().slice(1);
       const billingColumns = getOrderBillingColumns(orderSheet, false);
+      const notesColumn = getOrderNotesColumn(orderSheet, false);
       let filtered = rows;
       if (targetDate) {
         filtered = rows.filter(r => formatDate(r[2]) === targetDate);
@@ -258,8 +274,10 @@ function doGet(e) {
           customerName: r[3] || "",
           items: parsedItems,
           addOnNote: r[5] || "",
+          addOnPrice: billingColumns.AddOnPrice ? (Number(r[billingColumns.AddOnPrice - 1]) || 0) : 0,
           status: r[6] || "รอดำเนินการ",
-          notes: r[7] || "",
+          adminCancelledAt: billingColumns.AdminCancelledAt ? formatAdminCancelledAt(r[billingColumns.AdminCancelledAt - 1]) : "",
+          notes: r[notesColumn - 1] || "",
           paymentStatus: billingColumns.Payment ? (r[billingColumns.Payment - 1] || "ค้างชำระ") : "ค้างชำระ",
           totalAmount: billingColumns.TotalAmount ? (Number(r[billingColumns.TotalAmount - 1]) || 0) : 0,
           invoiceSentAt: billingColumns.InvoiceSentAt ? (r[billingColumns.InvoiceSentAt - 1] || "") : "",
@@ -291,6 +309,7 @@ function doGet(e) {
       
       const rows = orderSheet.getDataRange().getValues().slice(1);
       const billingColumns = getOrderBillingColumns(orderSheet, false);
+      const notesColumn = getOrderNotesColumn(orderSheet, false);
       const customerOrders = rows
         .filter(r => String(r[3]).trim() === String(customerName).trim())
         .reverse()
@@ -316,8 +335,10 @@ function doGet(e) {
             customerName: r[3] || "",
             items: parsedItems,
             addOnNote: r[5] || "",
+            addOnPrice: billingColumns.AddOnPrice ? (Number(r[billingColumns.AddOnPrice - 1]) || 0) : 0,
             status: r[6] || "รอดำเนินการ",
-            notes: r[7] || "",
+            adminCancelledAt: billingColumns.AdminCancelledAt ? formatAdminCancelledAt(r[billingColumns.AdminCancelledAt - 1]) : "",
+            notes: r[notesColumn - 1] || "",
             paymentStatus: billingColumns.Payment ? (r[billingColumns.Payment - 1] || "ค้างชำระ") : "ค้างชำระ",
             totalAmount: billingColumns.TotalAmount ? (Number(r[billingColumns.TotalAmount - 1]) || 0) : 0,
             invoiceSentAt: billingColumns.InvoiceSentAt ? (r[billingColumns.InvoiceSentAt - 1] || "") : "",
@@ -348,7 +369,9 @@ function doPost(e) {
     
     // 2.1 สั่งออเดอร์ใหม่จากลูกค้า (index.html)
     if (data.action === "createOrder") {
-      if (!Array.isArray(data.items)) {
+      if (!Array.isArray(data.items) ||
+          (data.addOnNote !== undefined && typeof data.addOnNote !== "string") ||
+          (data.notes !== undefined && typeof data.notes !== "string")) {
         return responseJSON({ success: false, message: "Invalid order items" });
       }
       const itemRows = itemsSheet.getDataRange().getValues();
@@ -367,8 +390,9 @@ function doPost(e) {
       const itemsJSON = JSON.stringify(data.items);
       const addOns = data.addOnNote || "";
       const status = "รอดำเนินการ";
-      const notes = "";
+      const notes = typeof data.notes === "string" ? data.notes.trim() : "";
       
+      const notesColumn = getOrderNotesColumn(orderSheet, true);
       const billingColumns = getOrderBillingColumns(orderSheet, true);
       const newRow = [
         orderId,
@@ -377,19 +401,22 @@ function doPost(e) {
         shopName,
         itemsJSON,
         addOns,
-        status,
-        notes
+        status
       ];
       while (newRow.length < Math.max(
         billingColumns.Payment,
         billingColumns.UnitPrices,
         billingColumns.TotalAmount,
-        billingColumns.InvoiceSentAt
+        billingColumns.InvoiceSentAt,
+        billingColumns.AddOnPrice
       )) {
         newRow.push("");
       }
       newRow[billingColumns.Payment - 1] = "ค้างชำระ";
       orderSheet.appendRow(newRow);
+      const newOrderRow = orderSheet.getLastRow();
+      orderSheet.getRange(newOrderRow, notesColumn).setNumberFormat("@");
+      orderSheet.getRange(newOrderRow, notesColumn).setValue(notes);
       
       return responseJSON({ success: true, orderId: orderId });
     }
@@ -403,8 +430,11 @@ function doPost(e) {
 
       const row = orderSheet.getRange(rowNumber, 1, 1, Math.max(orderSheet.getLastColumn(), 8)).getValues()[0];
       if (data.action === "cancelOrder" && !data.customerName) {
+        const billingColumns = getOrderBillingColumns(orderSheet, true);
+        const adminCancelledAt = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd HH:mm:ss");
         orderSheet.getRange(rowNumber, 7).setValue("ยกเลิกแล้ว");
-        return responseJSON({ success: true, orderId: orderId });
+        orderSheet.getRange(rowNumber, billingColumns.AdminCancelledAt).setValue(adminCancelledAt);
+        return responseJSON({ success: true, orderId: orderId, adminCancelledAt: adminCancelledAt });
       }
       if (!data.customerName || String(row[3]).trim() !== String(data.customerName).trim()) {
         return responseJSON({ success: false, message: "Order does not belong to this customer" });
@@ -427,7 +457,8 @@ function doPost(e) {
       }
 
       if (!validateCustomerOrderItems(data.items, itemsSheet) ||
-          (data.addOnNote !== undefined && typeof data.addOnNote !== "string")) {
+          (data.addOnNote !== undefined && typeof data.addOnNote !== "string") ||
+          (data.notes !== undefined && typeof data.notes !== "string")) {
         return responseJSON({ success: false, message: "Invalid order items" });
       }
       const addOnNote = data.addOnNote === undefined ? row[5] : data.addOnNote;
@@ -442,6 +473,11 @@ function doPost(e) {
         }))),
         addOnNote || ""
       ]]);
+      if (data.notes !== undefined) {
+        const notesColumn = getOrderNotesColumn(orderSheet, true);
+        orderSheet.getRange(rowNumber, notesColumn).setNumberFormat("@");
+        orderSheet.getRange(rowNumber, notesColumn).setValue(data.notes.trim());
+      }
       if (billingColumns.UnitPrices) orderSheet.getRange(rowNumber, billingColumns.UnitPrices).clearContent();
       if (billingColumns.TotalAmount) orderSheet.getRange(rowNumber, billingColumns.TotalAmount).clearContent();
       if (billingColumns.InvoiceSentAt) orderSheet.getRange(rowNumber, billingColumns.InvoiceSentAt).clearContent();
@@ -510,6 +546,12 @@ function doPost(e) {
       }
       const pricedItems = [];
       let totalAmount = 0;
+      const addOnNote = data.addOnNote === undefined ? null : String(data.addOnNote).trim();
+      const addOnPrice = data.addOnPrice === undefined ? 0 : Number(data.addOnPrice);
+      if ((data.addOnNote !== undefined && typeof data.addOnNote !== "string") ||
+          !isFinite(addOnPrice) || addOnPrice < 0) {
+        return responseJSON({ success: false, message: "Invalid add-on pricing data" });
+      }
       for (const item of data.items) {
         const qty = Number(item.qty);
         const unitPrice = Number(item.unitPrice);
@@ -527,6 +569,7 @@ function doPost(e) {
           lineTotal: lineTotal
         });
       }
+      totalAmount += addOnPrice;
       const rows = orderSheet.getDataRange().getValues();
       const billingColumns = getOrderBillingColumns(orderSheet, true);
       for (let i = 1; i < rows.length; i++) {
@@ -535,6 +578,8 @@ function doPost(e) {
           orderSheet.getRange(i + 1, billingColumns.UnitPrices).setValue(JSON.stringify(pricedItems));
           orderSheet.getRange(i + 1, billingColumns.TotalAmount).setValue(totalAmount);
           orderSheet.getRange(i + 1, billingColumns.InvoiceSentAt).setValue(invoiceSentAt);
+          orderSheet.getRange(i + 1, billingColumns.AddOnPrice).setValue(addOnPrice);
+          if (addOnNote !== null) orderSheet.getRange(i + 1, 6).setValue(addOnNote);
           return responseJSON({ success: true, totalAmount: totalAmount, invoiceSentAt: invoiceSentAt });
         }
       }
@@ -719,6 +764,14 @@ function formatDate(d) {
   } catch (err) {
     return String(d).trim();
   }
+}
+
+function formatAdminCancelledAt(value) {
+  if (!value) return "";
+  if (value instanceof Date) {
+    return Utilities.formatDate(value, "Asia/Bangkok", "yyyy-MM-dd HH:mm:ss");
+  }
+  return String(value);
 }
 
 function responseJSON(obj) {

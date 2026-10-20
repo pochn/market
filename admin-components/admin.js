@@ -145,7 +145,7 @@
         const qty = Number(item.qty) || 0;
         const price = Number(item.unitPrice) || 0;
         return sum + (qty * price);
-      }, 0);
+      }, Number(order.addOnPrice) || 0);
 
       if (order.paymentStatus === "ชำระแล้ว") {
         paidShopsCount++;
@@ -169,7 +169,6 @@
 
   function updatePackingFinanceBar(orders) {
     const bar = document.getElementById("packingMiniFinanceBar");
-    if (!bar) return;
 
     const unpaidByShop = new Map();
     orders.forEach(order => {
@@ -185,12 +184,16 @@
       .sort((a, b) => a.shopName.localeCompare(b.shopName, "th"));
 
     const total = unpaidShopsThisRound.reduce((sum, shop) => sum + shop.amount, 0);
+    const headerCount = document.getElementById("headerUnpaidCount");
+    const headerTotal = document.getElementById("headerUnpaidTotal");
+    if (headerCount) headerCount.textContent = String(unpaidShopsThisRound.length);
+    if (headerTotal) headerTotal.textContent = total.toLocaleString("th-TH", { maximumFractionDigits: 2 });
+    if (!bar) return;
     if (unpaidShopsThisRound.length === 0) {
       bar.className = "w-full bg-emerald-50 border border-emerald-300 p-2 px-3 rounded-xl flex justify-center items-center text-xs shadow-sm cursor-pointer text-left font-bold text-emerald-800";
       bar.innerHTML = `✓ ชำระครบทุกร้านแล้ว (<span id="miniUnpaidTotal">0</span> ฿)<span id="miniUnpaidCount" class="hidden">0</span>`;
       return;
     }
-
     bar.className = "w-full bg-amber-50 border border-amber-300 p-2 px-3 rounded-xl flex justify-between items-center text-xs shadow-sm cursor-pointer text-left";
     bar.innerHTML = `
       <span class="flex items-center gap-1.5 font-bold text-amber-900">
@@ -306,10 +309,31 @@
   }
 
   function calculateRenderedOrderTotal(card) {
-    const total = [...card.querySelectorAll("[data-line-total]")].reduce(
-      (sum, element) => sum + (Number(element.dataset.lineTotal) || 0), 0);
+    const orderId = card.dataset.orderCard;
+    const order = state.currentOrders.find(item => String(item.orderId) === orderId);
+    if (!order) return;
+
+    let vegTotal = 0;
+    const priceInputs = card.querySelectorAll("[data-unit-price]");
+    priceInputs.forEach(input => {
+      const idx = Number(input.dataset.index);
+      const isPacked = state.packedItems[`${orderId}_${idx}`] === true;
+      const item = order.items && order.items[idx];
+      const unitPrice = input.value === "" ? 0 : Number(input.value);
+      if (isPacked && item && Number.isFinite(unitPrice)) {
+        vegTotal += (Number(item.qty) || 0) * unitPrice;
+      }
+    });
+
+    const addOnInput = card.querySelector("[data-addon-price]");
+    const addOnPrice = addOnInput && addOnInput.value !== ""
+      ? Number(addOnInput.value) || 0
+      : 0;
+    const grandTotal = vegTotal + addOnPrice;
     const totalElement = card.querySelector("[data-order-total]");
-    if (totalElement) totalElement.textContent = total.toLocaleString("th-TH", { maximumFractionDigits: 2 });
+    if (totalElement) {
+      totalElement.textContent = grandTotal.toLocaleString("th-TH", { maximumFractionDigits: 2 });
+    }
   }
 
   function getUnpickedItems(order) {
@@ -358,12 +382,17 @@
       const lineTotal = qty * unitPrice;
       return `• ${item.name} ${qty} ${item.unit} × ${unitPrice.toLocaleString("th-TH")} = ${lineTotal.toLocaleString("th-TH")} บาท`;
     });
+    const addOnPriceInput = card.querySelector("[data-addon-price]");
+    const addOnPrice = addOnPriceInput
+      ? Number(addOnPriceInput.value) || 0
+      : Number(order.addOnPrice) || 0;
     const total = [...card.querySelectorAll("[data-line-total]")].reduce(
-      (sum, element) => sum + (Number(element.dataset.lineTotal) || 0), 0);
+      (sum, element) => sum + (Number(element.dataset.lineTotal) || 0), 0) + addOnPrice;
     return [
       `🧾 ใบส่งของ - ${order.customerName}`,
       `รอบวันที่ ${order.orderDate}`,
       ...lines,
+      ...(order.addOnNote ? [`• สั่งพิเศษ: ${order.addOnNote} = ${addOnPrice.toLocaleString("th-TH")} บาท`] : []),
       `ยอดรวมสุทธิ: ${total.toLocaleString("th-TH", { maximumFractionDigits: 2 })} บาท`,
       `สถานะ: ${order.paymentStatus || "ค้างชำระ"}`,
       `เลขที่ออเดอร์: ${order.orderId}`
@@ -374,7 +403,9 @@
     const container = document.getElementById("customerCardsContainer");
     if (!container) return;
 
-    const orders = state.currentOrders.filter(order => String(order.status || "").trim() !== "ยกเลิกแล้ว").map(order => {
+    const orders = state.currentOrders.filter(order =>
+      String(order.status || "").trim() !== "ยกเลิกแล้ว" || order.adminCancelledAt
+    ).map(order => {
       const items = Array.isArray(order.items) ? order.items : [];
       const invoiceSent = hasInvoiceBeenSent({ ...order, items });
       const checked = items.reduce((count, item, index) =>
@@ -384,11 +415,13 @@
       return { ...order, items, checked, remaining: items.length - checked, done: items.length > 0 && checked === items.length };
     });
 
-    const completed = orders.filter(order => order.done).length;
+    const completed = orders.filter(order =>
+      !order.adminCancelledAt && order.done
+    ).length;
     const statCompleted = document.getElementById("statCompletedShops");
     if (statCompleted) statCompleted.textContent = completed;
 
-    updateFinanceStats(orders);
+    updateFinanceStats(orders.filter(order => String(order.status || "").trim() !== "ยกเลิกแล้ว"));
     updatePackingFinanceBar(orders);
 
     if (!orders.length) {
@@ -397,15 +430,16 @@
     }
 
     container.innerHTML = orders.map(order => {
-      const status = order.items.length === 0 ? "ไม่มีรายการ" :
+      const isCancelledByAdmin = Boolean(order.adminCancelledAt);
+      const status = isCancelledByAdmin ? "❌ ยกเลิกแล้ว" : order.items.length === 0 ? "ไม่มีรายการ" :
         order.done ? `✓ ครบแล้ว (${order.checked}/${order.items.length})` :
           order.checked ? `⚠️ ค้าง ${order.remaining} รายการ (${order.checked}/${order.items.length})` :
             `⏳ ยังไม่ได้ของ (${order.items.length})`;
       const isInvoiceSent = hasInvoiceBeenSent(order);
       const isUnlockedForEdit = state.unlockEditingOrders.has(String(order.orderId));
-      const isLocked = isInvoiceSent && !isUnlockedForEdit;
+      const isLocked = isCancelledByAdmin || (isInvoiceSent && !isUnlockedForEdit);
       const hasSharedLine = state.sharedLineOrders.has(String(order.orderId));
-      const sentStamp = isInvoiceSent && isLocked
+      const sentStamp = !isCancelledByAdmin && isInvoiceSent && isLocked
         ? order.paymentStatus === "ชำระแล้ว"
           ? `<div class="pointer-events-none absolute inset-0 flex items-center justify-center z-10">
               <div class="border-4 border-dashed border-emerald-500/80 text-emerald-600 bg-emerald-50/85 font-black text-xl sm:text-2xl px-6 py-2 rounded-2xl tracking-wider uppercase transform -rotate-12 shadow-md text-center">
@@ -420,17 +454,27 @@
               </div>
             </div>`
         : "";
+      const vegTotal = (order.items || []).reduce((sum, item, idx) => {
+        const isPacked = isInvoiceSent
+          ? (Number(item.qty) > 0 && item.unavailable !== true)
+          : (state.packedItems[`${order.orderId}_${idx}`] === true);
+        const price = getUnitPrice(item);
+        return sum + (isPacked && price !== "" ? (Number(item.qty) || 0) * (Number(price) || 0) : 0);
+      }, 0);
+      const addOnTotal = Number(order.addOnPrice) || 0;
+      const initialOrderTotal = vegTotal + addOnTotal;
 
-      return `<article data-order-card="${escapeHtml(order.orderId)}" class="relative overflow-hidden rounded-2xl border-2 p-2.5 shadow-sm space-y-2 ${order.done ? "bg-gray-50 opacity-80" : order.checked ? "bg-amber-50/40 border-amber-400" : "bg-white border-gray-200"}">
+      return `<article data-order-card="${escapeHtml(order.orderId)}" class="relative overflow-hidden rounded-2xl border-2 p-2.5 shadow-sm space-y-2 ${isCancelledByAdmin ? "bg-red-50/70 border-red-300" : order.done ? "bg-gray-50 opacity-80" : order.checked ? "bg-amber-50/40 border-amber-400" : "bg-white border-gray-200"}">
         ${sentStamp}
+        ${isCancelledByAdmin ? `<div class="p-2.5 bg-red-100 border border-red-300 rounded-xl text-red-800 text-xs font-bold">❌ ออเดอร์ถูกยกเลิกโดยแอดมิน · ${escapeHtml(order.adminCancelledAt)} น.</div>` : ""}
         <div class="flex justify-between items-start border-b pb-2 gap-2">
           <div class="min-w-0"><h3 class="font-extrabold text-base truncate">🏪 ${escapeHtml(order.customerName)}</h3>
             <div class="text-[10px] text-emerald-800 truncate">🕐 ${escapeHtml(formatOrderTime(order.timestamp))} · ${escapeHtml(order.orderId)}</div></div>
           <div class="flex flex-col items-end gap-1 shrink-0">
             <span class="text-[10px] font-bold">${status}</span>
-            <button data-action="admin-cancel-order" data-order-id="${escapeHtml(order.orderId)}" data-shop-name="${escapeHtml(order.customerName)}" ${isLocked ? "disabled" : ""} class="px-2 py-1 rounded-lg text-xs font-bold border transition shrink-0 ${isLocked ? "bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed" : "bg-red-50 hover:bg-red-100 text-red-600 border-red-200"}" title="ยกเลิกบิลนี้">
+            ${isCancelledByAdmin ? "" : `<button data-action="admin-cancel-order" data-order-id="${escapeHtml(order.orderId)}" data-shop-name="${escapeHtml(order.customerName)}" ${isLocked ? "disabled" : ""} class="px-2 py-1 rounded-lg text-xs font-bold border transition shrink-0 ${isLocked ? "bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed" : "bg-red-50 hover:bg-red-100 text-red-600 border-red-200"}" title="ยกเลิกบิลนี้">
               🗑️ ยกเลิกบิล
-            </button>
+            </button>`}
           </div>
         </div>
         <div class="space-y-1.5">${order.items.map((item, index) => {
@@ -470,16 +514,32 @@
             </div>
           </div>`;
         }).join("")}</div>
-        ${order.addOnNote ? `<div class="p-2 bg-amber-50 rounded-xl border border-amber-200 text-xs"><strong>📝 สั่งพิเศษ:</strong> ${escapeHtml(order.addOnNote)}</div>` : ""}
+        ${order.addOnNote ? `<div class="p-2.5 bg-amber-50 rounded-xl border border-amber-200 flex items-center justify-between gap-2">
+          <div class="flex items-center gap-2 min-w-0 flex-1">
+            <span class="text-amber-900 font-bold text-xs shrink-0">📝 สั่งพิเศษ:</span>
+            <span id="addonText_${escapeHtml(order.orderId)}" class="text-xs font-semibold text-amber-950 truncate">${escapeHtml(order.addOnNote)}</span>
+            <button ${isLocked ? 'disabled class="hidden"' : `data-action="edit-addon-text" data-order="${escapeHtml(order.orderId)}"`} class="text-[11px] text-amber-700 hover:text-amber-900 underline shrink-0">✏️ แก้ไข</button>
+          </div>
+          <div class="flex items-center gap-1 shrink-0">
+            <span class="text-[11px] text-gray-500">ราคา:</span>
+            <input type="number" min="0" step="1" placeholder="0" value="${Number(order.addOnPrice) || ""}" ${isLocked ? "disabled" : ""} data-addon-price data-action="change-addon-price" class="w-16 p-1 text-center font-bold text-xs bg-white border border-amber-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-amber-500">
+            <span class="text-[10px] text-gray-500">฿</span>
+          </div>
+        </div>` : ""}
+        ${order.notes ? `
+          <div class="p-2.5 bg-sky-50 border-2 border-sky-300 rounded-xl text-xs text-sky-950 flex items-start gap-2 shadow-sm my-1">
+            <span class="text-base leading-none">💬</span>
+            <div class="min-w-0 flex-1">
+              <strong class="text-sky-900 block font-bold text-[11px] uppercase tracking-wide">ข้อความฝากถึงแม่ทิพย์:</strong>
+              <span class="font-semibold text-xs leading-relaxed text-sky-950 break-words">${escapeHtml(order.notes)}</span>
+            </div>
+          </div>
+        ` : ""}
         <div class="flex justify-between items-center border-t pt-2">
           <span class="text-sm font-extrabold text-gray-800">ยอดรวมสุทธิ</span>
-          <strong class="text-base text-emerald-800"><span data-order-total>${(order.items || []).reduce((sum, item) => {
-            const price = getUnitPrice(item);
-            return sum + (price === "" ? 0 : (Number(item.qty) || 0) * (Number(price) || 0));
-          }, 0)
-            .toLocaleString("th-TH", { maximumFractionDigits: 2 })}</span> บาท</strong>
+          <strong class="text-base text-emerald-800"><span data-order-total>${initialOrderTotal.toLocaleString("th-TH", { maximumFractionDigits: 2 })}</span> บาท</strong>
         </div>
-        <div class="grid grid-cols-4 gap-1.5 pt-2 border-t border-gray-100">
+        ${isCancelledByAdmin ? "" : `<div class="grid grid-cols-4 gap-1.5 pt-2 border-t border-gray-100">
           <button ${isLocked ? "disabled" : `data-action="save-invoice" data-order-id="${escapeHtml(order.orderId)}"`} class="min-w-0 py-2 px-1 rounded-xl text-[10px] sm:text-xs font-bold flex items-center justify-center gap-1 transition shadow-sm ${isLocked ? "bg-slate-700 text-white cursor-default" : "bg-emerald-600 hover:bg-emerald-700 text-white"}">
             <span>${isLocked ? "✓ ส่งแล้ว" : isInvoiceSent ? "📤 ส่งใหม่" : "📤 ส่งบิล"}</span>
           </button>
@@ -494,7 +554,7 @@
           <button data-action="share-order-invoice" data-order="${escapeHtml(order.orderId)}" class="min-w-0 py-2 px-1 rounded-xl text-[10px] sm:text-xs font-bold border flex items-center justify-center gap-1 shadow-sm transition ${hasSharedLine ? "bg-emerald-800 text-white border-emerald-900" : "bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-300"}">
             <span>${hasSharedLine ? "✓ ส่ง LINE" : "📲 LINE"}</span>
           </button>
-        </div>
+        </div>`}
       </article>`;
     }).join("");
   }
@@ -523,6 +583,14 @@
       alert("กรุณากรอกราคาต่อหน่วยให้ครบทุกสินค้าที่ติ๊กรับของ (ราคาต้องไม่ติดลบ)");
       return;
     }
+    const addOnPriceInput = card.querySelector("[data-addon-price]");
+    const addOnPrice = order.addOnNote
+      ? Number(addOnPriceInput && addOnPriceInput.value || 0)
+      : 0;
+    if (!Number.isFinite(addOnPrice) || addOnPrice < 0) {
+      alert("กรุณากรอกราคาของสั่งพิเศษเป็นจำนวนตั้งแต่ 0 บาทขึ้นไป");
+      return;
+    }
 
     button.disabled = true;
     const originalLabel = button.textContent;
@@ -531,6 +599,8 @@
       const result = await postAction({
         action: "updateOrderPricing",
         orderId,
+        addOnNote: order.addOnNote || "",
+        addOnPrice,
         items: items.map(({ name, unit, qty, unitPrice, unavailable }) =>
           ({ name, unit, qty, unitPrice, unavailable }))
       });
@@ -541,6 +611,7 @@
         if (!item.unavailable) state.customPrices[priceStorageKey(item)] = item.unitPrice;
       });
       order.totalAmount = Number(result.totalAmount) || 0;
+      order.addOnPrice = addOnPrice;
       order.hasPricing = true;
       order.invoiceSentAt = result.invoiceSentAt ||
         new Date().toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" }) + " น.";
@@ -583,7 +654,10 @@
         throw new Error(result.message || "Apps Script ไม่ยืนยันการยกเลิกบิล");
       }
       const order = state.currentOrders.find(item => String(item.orderId) === String(orderId));
-      if (order) order.status = "ยกเลิกแล้ว";
+      if (order) {
+        order.status = "ยกเลิกแล้ว";
+        order.adminCancelledAt = result.adminCancelledAt;
+      }
       renderDashboard();
     } catch (error) {
       alert(`ยกเลิกบิลไม่สำเร็จ: ${error.message}`);
@@ -611,6 +685,7 @@
 
     if (button) button.disabled = true;
     let pricingSaved = false;
+    let invoiceAddOnPrice = 0;
     try {
       let pricedItems = null;
       if (isPaying) {
@@ -620,6 +695,13 @@
         if (pricedItems.some(item => !item.unavailable &&
             (!Number.isFinite(item.unitPrice) || item.unitPrice < 0))) {
           throw new Error("กรุณากรอกราคาต่อหน่วยให้ครบทุกสินค้าที่ติ๊กรับของ (ราคาต้องไม่ติดลบ) ก่อนเปลี่ยนเป็นชำระแล้ว");
+        }
+        const addOnPriceInput = card.querySelector("[data-addon-price]");
+        invoiceAddOnPrice = order.addOnNote
+          ? Number(addOnPriceInput && addOnPriceInput.value || 0)
+          : 0;
+        if (!Number.isFinite(invoiceAddOnPrice) || invoiceAddOnPrice < 0) {
+          throw new Error("กรุณากรอกราคาของสั่งพิเศษเป็นจำนวนตั้งแต่ 0 บาทขึ้นไป");
         }
       }
 
@@ -634,6 +716,8 @@
         const pricingResult = await postAction({
           action: "updateOrderPricing",
           orderId,
+          addOnNote: order.addOnNote || "",
+          addOnPrice: invoiceAddOnPrice,
           items: pricedItems.map(({ name, unit, qty, unitPrice, unavailable }) =>
             ({ name, unit, qty, unitPrice, unavailable }))
         });
@@ -644,6 +728,7 @@
           if (!item.unavailable) state.customPrices[priceStorageKey(item)] = item.unitPrice;
         });
         order.totalAmount = Number(pricingResult.totalAmount) || 0;
+        order.addOnPrice = invoiceAddOnPrice;
         order.hasPricing = true;
         order.invoiceSentAt = pricingResult.invoiceSentAt ||
           new Date().toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" }) + " น.";
@@ -1420,6 +1505,9 @@
         else delete state.packedItems[key];
         localStorage.setItem("market_packed_items", JSON.stringify(state.packedItems));
         renderPackingTab();
+        const card = [...document.querySelectorAll("[data-order-card]")]
+          .find(orderCard => orderCard.dataset.orderCard === control.dataset.order);
+        if (card) calculateRenderedOrderTotal(card);
         break;
       }
       case "unlock-order-edit":
@@ -1433,6 +1521,26 @@
       case "save-invoice":
         await saveOrderPricing(control.dataset.orderId, control);
         break;
+      case "edit-addon-text": {
+        const order = state.currentOrders.find(item => String(item.orderId) === String(control.dataset.order));
+        if (!order || hasInvoiceBeenSent(order) && !state.unlockEditingOrders.has(String(order.orderId))) break;
+        const result = await Swal.fire({
+          title: "แก้ไขรายการสั่งพิเศษ",
+          input: "text",
+          inputValue: order.addOnNote || "",
+          inputPlaceholder: "ระบุรายการสั่งพิเศษ",
+          showCancelButton: true,
+          confirmButtonText: "บันทึก",
+          cancelButtonText: "ยกเลิก",
+          confirmButtonColor: "#059669"
+        });
+        if (result.isConfirmed) {
+          order.addOnNote = String(result.value || "").trim();
+          if (!order.addOnNote) order.addOnPrice = 0;
+          renderPackingTab();
+        }
+        break;
+      }
       case "save-order-pricing":
         await saveOrderPricing(control.dataset.order, control);
         break;
@@ -1525,7 +1633,6 @@
 
   function initializeEvents() {
     document.body.addEventListener("click", handleClick);
-    document.getElementById("refreshButton")?.addEventListener("click", loadOrders);
     document.getElementById("todayButton")?.addEventListener("click", () => {
       initializeDate();
       loadOrders();
@@ -1562,6 +1669,10 @@
         } catch (error) {
           console.warn("บันทึกราคาต่อหน่วยไว้ในเครื่องไม่สำเร็จ", error);
         }
+      }
+      if (event.target.matches("[data-addon-price]")) {
+        const card = event.target.closest("[data-order-card]");
+        if (card) calculateRenderedOrderTotal(card);
       }
     });
 
