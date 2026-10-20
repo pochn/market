@@ -21,10 +21,10 @@
 <body class="bg-gray-100 min-h-screen pb-12 text-gray-800">
 
   <!-- Header ด้านบนสุด พร้อมปุ่มสลับ 2 โหมดหลัก -->
-  <header class="bg-emerald-800 text-white p-3.5 shadow-md sticky top-0 z-40">
-    <div class="max-w-xl mx-auto flex flex-col gap-2.5">
+  <header class="bg-emerald-800 text-white p-2 sm:p-3.5 shadow-md sticky top-0 z-40">
+    <div class="max-w-xl mx-auto flex flex-col gap-2">
       
-      <div class="flex flex-wrap justify-between items-center gap-2">
+      <div class="flex justify-between items-center gap-2">
         <h1 class="text-lg font-black tracking-tight">🛒 ตลาดเช้าแม่ทิพย์</h1>
 
         <!-- สลับโหมดหลัก: หน้างานตลาดเช้า vs ระบบหลังบ้าน -->
@@ -36,6 +36,8 @@
             ⚙️ ระบบหลังบ้าน
           </button>
         </div>
+      </div>
+      <div class="flex items-center justify-end gap-1.5 overflow-x-auto whitespace-nowrap">
         <div class="flex items-center gap-0.5 bg-emerald-900/80 p-0.5 rounded-lg border border-emerald-700" role="group" aria-label="ปรับขนาดตัวอักษร">
           <button type="button" data-action="set-admin-font-size" data-font-size="xsmall" aria-label="ขนาดเล็กที่สุด A-" class="admin-font-size-button px-1 py-1 rounded text-[10px] font-bold text-emerald-100 hover:bg-emerald-700 whitespace-nowrap">A-</button>
           <button type="button" data-action="set-admin-font-size" data-font-size="small" aria-label="ขนาดปกติ A" class="admin-font-size-button px-1 py-1 rounded text-[10px] font-bold text-emerald-100 hover:bg-emerald-700 whitespace-nowrap">A</button>
@@ -49,6 +51,7 @@
           <button type="button" data-action="set-admin-card-size" data-card-size="medium" aria-label="การ์ดขนาดปกติ" class="admin-card-size-button px-1.5 py-1 rounded text-[10px] font-bold bg-white text-emerald-900 shadow">ปกติ</button>
           <button type="button" data-action="set-admin-card-size" data-card-size="large" aria-label="การ์ดใหญ่" class="admin-card-size-button px-1.5 py-1 rounded text-[10px] font-bold text-emerald-100 hover:bg-emerald-700">ใหญ่</button>
         </div>
+        <button type="button" data-action="reset-display-settings" class="shrink-0 px-2 py-1 rounded-lg border border-emerald-600 bg-emerald-950 text-[10px] font-bold text-white hover:bg-black" title="คืนค่าฟอนต์ A+ และการ์ดปกติ">คืนค่าปกติ</button>
       </div>
 
       <!-- แถบเลือกรอบวันที่ (แสดงในโหมดหน้างาน) -->
@@ -70,7 +73,7 @@
     </div>
   </header>
 
-  <main id="adminApp" class="max-w-xl mx-auto p-4 space-y-4">
+  <main id="adminApp" class="max-w-xl mx-auto px-1.5 py-3 sm:p-4 space-y-3">
 
     <!-- ============================================== -->
     <!-- 1. เมนูนำทางของโหมดหน้างาน (3 แท็บ สะอาดตา) -->

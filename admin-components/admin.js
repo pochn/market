@@ -1735,6 +1735,10 @@
       case "set-admin-card-size":
         setAdminCardSize(control.dataset.cardSize);
         break;
+      case "reset-display-settings":
+        setAdminFontSize("medium");
+        setAdminCardSize("medium");
+        break;
       case "quick-share-line":
         await shareOrderInvoice(control.dataset.orderId, control);
         break;

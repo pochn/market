@@ -32,10 +32,12 @@
   </script>
 
   <!-- Header -->
-  <header class="bg-emerald-700 text-white px-4 py-2.5 shadow-md sticky top-0 z-40">
+  <header class="bg-emerald-700 text-white px-2 py-2 sm:px-4 shadow-md sticky top-0 z-40">
     <div class="max-w-md mx-auto space-y-1.5">
-      <div class="flex flex-wrap justify-between items-center gap-2">
+      <div class="flex justify-between items-center gap-2">
         <h1 class="text-lg font-black tracking-tight">🥬 ตลาดสดแม่ทิพย์</h1>
+      </div>
+      <div class="flex items-center justify-end gap-1.5 overflow-x-auto whitespace-nowrap">
         <div class="flex items-center gap-0.5 bg-emerald-800/90 p-0.5 rounded-lg border border-emerald-500" role="group" aria-label="ปรับขนาดตัวอักษร">
           <button onclick="changeFontSize('xsmall')" data-font-size="xsmall" class="customer-font-size-button px-1.5 py-0.5 rounded text-[10px] font-bold text-white hover:bg-emerald-700 whitespace-nowrap" title="ตัวหนังสือเล็กที่สุด" aria-label="ตัวหนังสือเล็กที่สุด A-" aria-pressed="false">A-</button>
           <button onclick="changeFontSize('small')" data-font-size="small" class="customer-font-size-button px-1.5 py-0.5 rounded text-xs font-bold text-white hover:bg-emerald-700 whitespace-nowrap" title="ตัวหนังสือปกติ" aria-label="ตัวหนังสือปกติ A" aria-pressed="false">A</button>
@@ -49,6 +51,7 @@
           <button type="button" onclick="changeCardSize('medium')" data-card-size="medium" class="customer-card-size-button px-1.5 py-0.5 rounded text-xs font-bold bg-white text-emerald-900 shadow" aria-label="การ์ดขนาดปกติ">ปกติ</button>
           <button type="button" onclick="changeCardSize('large')" data-card-size="large" class="customer-card-size-button px-1.5 py-0.5 rounded text-xs font-bold text-white hover:bg-emerald-700" aria-label="การ์ดใหญ่">ใหญ่</button>
         </div>
+        <button type="button" onclick="resetDisplaySettings()" class="shrink-0 px-2 py-1 rounded-lg border border-emerald-400 bg-emerald-900 text-[10px] font-bold text-white hover:bg-emerald-950" title="คืนค่าฟอนต์ A+ และการ์ดปกติ">คืนค่าปกติ</button>
       </div>
       <div class="flex justify-between items-center text-xs">
         <span class="text-emerald-100 font-medium" id="displayMarketDate">รอบตลาดเช้า: กำลังโหลด...</span>
@@ -59,7 +62,7 @@
     </div>
   </header>
 
-  <main class="max-w-md mx-auto p-4 space-y-4">
+  <main class="max-w-md mx-auto px-1.5 py-3 sm:p-4 space-y-3">
 
     <!-- ข้อมูลร้านค้าของลูกค้า -->
     <section class="bg-white p-3 rounded-2xl shadow-sm border border-emerald-200 flex items-center justify-between gap-2">
@@ -112,7 +115,7 @@
       <input type="text" id="searchBox" oninput="filterVegList()" placeholder="🔍 ค้นหาชื่อผัก เช่น คะน้า, แตง..." class="w-full p-3 bg-white border border-gray-300 rounded-xl text-base focus:ring-2 focus:ring-emerald-500 focus:outline-none shadow-sm">
 
       <!-- ตารางการ์ดผักแบบสัมผัสง่าย -->
-      <div id="vegGrid" class="grid grid-cols-2 gap-3">
+      <div id="vegGrid" class="grid grid-cols-2 gap-2">
         <div class="col-span-2 text-center py-12 text-gray-400 text-sm">กำลังโหลดข้อมูลผัก...</div>
       </div>
     </div>
@@ -152,7 +155,7 @@
   </main>
 
   <!-- แถบด้านล่างสำหรับเปลี่ยนหน้า หรือ กดยืนยันส่ง -->
-  <div class="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-3 shadow-2xl z-30">
+  <div class="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-2 sm:p-3 shadow-2xl z-30">
     <div class="max-w-md mx-auto">
       <!-- ปุ่มสำหรับแท็บ 1: ไปต่อแท็บ 2 -->
       <div id="bottomBarTab1" class="flex items-center justify-between gap-3">
@@ -293,6 +296,11 @@
       } catch (error) {
         console.warn("บันทึกขนาดการ์ดไม่สำเร็จ", error);
       }
+    }
+
+    function resetDisplaySettings() {
+      changeFontSize("medium");
+      changeCardSize("medium");
     }
 
     function renderOrderHistory(orders) {
