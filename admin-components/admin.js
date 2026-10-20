@@ -9,6 +9,12 @@
   if (!(state.unlockEditingOrders instanceof Set)) {
     state.unlockEditingOrders = new Set();
   }
+  if (!["pending", "paid", "all"].includes(state.packingFilter)) {
+    state.packingFilter = "pending";
+  }
+  if (typeof state.showCancelledOrders !== "boolean") {
+    state.showCancelledOrders = false;
+  }
   if (!(state.sharedLineOrders instanceof Set)) {
     try {
       const sharedOrders = JSON.parse(localStorage.getItem("market_shared_line_orders") || "[]");
@@ -62,9 +68,27 @@
 
   function initializeDate() {
     const date = new Date();
-    if (date.getHours() >= 12) date.setDate(date.getDate() + 1);
+    if (date.getHours() >= 11) date.setDate(date.getDate() + 1);
     document.getElementById("selectedDate").value = 
       `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+  }
+
+  function scheduleMarketDateCutoff() {
+    const now = new Date();
+    const nextCutoff = new Date(now);
+    nextCutoff.setHours(11, 0, 0, 0);
+    if (nextCutoff <= now) nextCutoff.setDate(nextCutoff.getDate() + 1);
+
+    window.setTimeout(() => {
+      const currentDate = new Date();
+      const today = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, "0")}-${String(currentDate.getDate()).padStart(2, "0")}`;
+      const selectedDate = document.getElementById("selectedDate");
+      if (selectedDate?.value === today) {
+        initializeDate();
+        loadOrders();
+      }
+      scheduleMarketDateCutoff();
+    }, nextCutoff.getTime() - now.getTime());
   }
 
   function getOrderTimestamp(order) {
@@ -105,10 +129,12 @@
         console.warn("บันทึกสถานะรายการที่จัดแล้วไม่สำเร็จ", error);
       }
       renderDashboard();
+      return true;
     } catch (error) {
       state.currentOrders = [];
       renderDashboard();
       console.error("โหลดออเดอร์ไม่สำเร็จ", error);
+      return false;
     }
   }
 
@@ -168,8 +194,6 @@
   }
 
   function updatePackingFinanceBar(orders) {
-    const bar = document.getElementById("packingMiniFinanceBar");
-
     const unpaidByShop = new Map();
     orders.forEach(order => {
       const amount = Number(order.totalAmount) || 0;
@@ -177,53 +201,82 @@
           String(order.status || "").trim() === "ยกเลิกแล้ว" || amount <= 0) return;
 
       const shopName = String(order.customerName || "ไม่ระบุชื่อร้าน");
-      unpaidByShop.set(shopName, (unpaidByShop.get(shopName) || 0) + amount);
+      if (!unpaidByShop.has(shopName)) {
+        unpaidByShop.set(shopName, {
+          shopName,
+          totalAmount: 0,
+          bills: []
+        });
+      }
+
+      const shopData = unpaidByShop.get(shopName);
+      shopData.totalAmount += amount;
+      shopData.bills.push({
+        orderId: order.orderId,
+        orderDate: order.orderDate,
+        amount
+      });
     });
-    unpaidShopsThisRound = [...unpaidByShop.entries()]
-      .map(([shopName, amount]) => ({ shopName, amount }))
+    unpaidShopsThisRound = [...unpaidByShop.values()]
       .sort((a, b) => a.shopName.localeCompare(b.shopName, "th"));
 
-    const total = unpaidShopsThisRound.reduce((sum, shop) => sum + shop.amount, 0);
+    const total = unpaidShopsThisRound.reduce((sum, shop) => sum + shop.totalAmount, 0);
     const headerCount = document.getElementById("headerUnpaidCount");
     const headerTotal = document.getElementById("headerUnpaidTotal");
     if (headerCount) headerCount.textContent = String(unpaidShopsThisRound.length);
     if (headerTotal) headerTotal.textContent = total.toLocaleString("th-TH", { maximumFractionDigits: 2 });
-    if (!bar) return;
-    if (unpaidShopsThisRound.length === 0) {
-      bar.className = "w-full bg-emerald-50 border border-emerald-300 p-2 px-3 rounded-xl flex justify-center items-center text-xs shadow-sm cursor-pointer text-left font-bold text-emerald-800";
-      bar.innerHTML = `✓ ชำระครบทุกร้านแล้ว (<span id="miniUnpaidTotal">0</span> ฿)<span id="miniUnpaidCount" class="hidden">0</span>`;
-      return;
-    }
-    bar.className = "w-full bg-amber-50 border border-amber-300 p-2 px-3 rounded-xl flex justify-between items-center text-xs shadow-sm cursor-pointer text-left";
-    bar.innerHTML = `
-      <span class="flex items-center gap-1.5 font-bold text-amber-900">
-        <span>⚠️ ร้านค้างชำระรอบนี้:</span>
-        <span id="miniUnpaidCount" class="bg-red-600 text-white px-2 py-0.5 rounded-full text-[11px] font-black">${unpaidShopsThisRound.length}</span>
-        <span>ร้าน</span>
-      </span>
-      <span class="font-black text-red-600 text-sm">
-        <span id="miniUnpaidTotal">${total.toLocaleString("th-TH", { maximumFractionDigits: 2 })}</span> ฿ <span class="text-[10px] text-gray-500 font-normal underline ml-1">ดูรายชื่อ ▼</span>
-      </span>`;
   }
 
   async function showUnpaidShopsModal() {
     if (!unpaidShopsThisRound.length) return;
-    const rows = unpaidShopsThisRound.map(shop => `
-      <div class="flex justify-between items-center gap-3 py-2 border-b border-gray-100 text-sm">
-        <span class="font-bold text-gray-800 text-left">${escapeHtml(shop.shopName)}</span>
-        <span class="font-black text-red-600 whitespace-nowrap">${shop.amount.toLocaleString("th-TH", { maximumFractionDigits: 2 })} ฿</span>
-      </div>`).join("");
-    const total = unpaidShopsThisRound.reduce((sum, shop) => sum + shop.amount, 0);
+    const rows = unpaidShopsThisRound.map(shop => {
+      const billsHtml = shop.bills.map(bill => `
+        <div class="flex flex-wrap sm:flex-nowrap justify-between items-center gap-2 text-xs py-1.5 px-2 bg-white rounded-lg border border-amber-200 my-1 shadow-sm">
+          <div class="min-w-0 flex-1">
+            <div class="font-bold text-gray-800">รอบวันที่ ${escapeHtml(bill.orderDate)}</div>
+            <div class="text-[10px] text-gray-400 font-mono truncate">${escapeHtml(bill.orderId)}</div>
+            <div class="font-black text-red-600 text-sm mt-0.5">${bill.amount.toLocaleString("th-TH", { maximumFractionDigits: 2 })} ฿</div>
+          </div>
+          <div class="flex items-center gap-1 shrink-0">
+            <button type="button" data-action="quick-share-line" data-order-id="${escapeHtml(bill.orderId)}"
+              class="px-2 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-lg font-bold text-[11px] flex items-center gap-1 shadow-sm">
+              <span>📲 LINE</span>
+            </button>
+            <button type="button" data-action="quick-pay-order" data-order-id="${escapeHtml(bill.orderId)}" data-shop-name="${escapeHtml(shop.shopName)}"
+              class="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white rounded-lg font-bold text-[11px] flex items-center gap-1 shadow-sm">
+              <span>🟢 ชำระแล้ว</span>
+            </button>
+          </div>
+        </div>
+      `).join("");
+
+      return `
+        <div class="py-2.5 border-b border-gray-100 last:border-b-0 space-y-1.5">
+          <div class="flex justify-between items-center text-sm px-1">
+            <span class="font-extrabold text-gray-900">🏪 ${escapeHtml(shop.shopName)} <span class="text-xs font-normal text-gray-500">(${shop.bills.length} บิล)</span></span>
+            <span class="font-black text-red-600 text-base">รวม ${shop.totalAmount.toLocaleString("th-TH", { maximumFractionDigits: 2 })} ฿</span>
+          </div>
+          <div class="space-y-1 bg-amber-50/60 p-2 rounded-xl border border-amber-200">
+            ${billsHtml}
+          </div>
+        </div>
+      `;
+    }).join("");
+    const total = unpaidShopsThisRound.reduce((sum, shop) => sum + shop.totalAmount, 0);
 
     await Swal.fire({
-      title: "⚠️ ร้านค้างชำระรอบนี้",
-      html: `<div class="text-left max-h-72 overflow-y-auto">${rows}</div>
-        <div class="flex justify-between items-center pt-3 mt-2 border-t text-base font-extrabold">
-          <span class="text-gray-700">ยอดค้างรวม</span>
-          <span class="text-red-600">${total.toLocaleString("th-TH", { maximumFractionDigits: 2 })} ฿</span>
-        </div>`,
+      title: "⚠️ รายละเอียดร้านค้างชำระ",
+      html: `
+        <div class="text-left max-h-80 overflow-y-auto space-y-2 mt-2 pr-1">
+          ${rows}
+        </div>
+        <div class="flex justify-between items-center pt-3 mt-3 border-t text-base font-extrabold">
+          <span class="text-gray-700">ยอดค้างรวมทั้งหมด:</span>
+          <span class="text-red-600 text-lg">${total.toLocaleString("th-TH", { maximumFractionDigits: 2 })} ฿</span>
+        </div>
+      `,
       confirmButtonText: "ปิด",
-      confirmButtonColor: "#059669"
+      confirmButtonColor: "#6b7280"
     });
   }
 
@@ -235,52 +288,86 @@
   function renderMarketTab() {
     const list = document.getElementById("summaryList");
     if (!list) return;
-    const orders = state.currentOrders.filter(order => String(order.status || "").trim() !== "ยกเลิกแล้ว");
-    if (!orders.length) {
-      list.innerHTML = '<div class="text-center py-10 text-gray-400 bg-white rounded-2xl border p-6">ไม่มีรายการสั่งซื้อสำหรับวันที่เลือก</div>';
-      const addonSec = document.getElementById("addonSection");
-      if (addonSec) addonSec.classList.add("hidden");
-      updateFinanceStats([]);
+    const pendingOrders = state.currentOrders.filter(order =>
+      String(order.status || "").trim() !== "ยกเลิกแล้ว" && !hasInvoiceBeenSent(order)
+    );
+    const addonSection = document.getElementById("addonSection");
+
+    if (!pendingOrders.length) {
+      const allOrders = state.currentOrders.filter(order =>
+        String(order.status || "").trim() !== "ยกเลิกแล้ว"
+      );
+      const isAllCompleted = allOrders.length > 0 && allOrders.every(hasInvoiceBeenSent);
+
+      list.innerHTML = `
+        <div class="text-center py-10 bg-white rounded-2xl border p-6 space-y-2">
+          <span class="text-3xl">${isAllCompleted ? "🎉" : "🛒"}</span>
+          <h3 class="font-extrabold text-base ${isAllCompleted ? "text-emerald-700" : "text-gray-700"}">
+            ${isAllCompleted ? "✓ จัดซื้อและส่งใบส่งของครบทุกร้านแล้วสำหรับรอบนี้" : "ไม่มีรายการที่ต้องซื้อสำหรับรอบนี้"}
+          </h3>
+          <p class="text-xs text-gray-400">
+            ${isAllCompleted ? "ยอดซื้อตลาดสำหรับรอบนี้เสร็จสิ้นเรียบร้อยแล้ว" : "ยังไม่มีออเดอร์ใหม่เข้ามา"}
+          </p>
+        </div>
+      `;
+      if (addonSection) addonSection.classList.add("hidden");
       return;
     }
 
     const totals = new Map();
     const addons = [];
-    orders.forEach(order => {
-      if (order.addOnNote && order.addOnNote.trim()) {
+    pendingOrders.forEach(order => {
+      if (order.addOnNote && String(order.addOnNote).trim()) {
         addons.push({ shop: order.customerName, note: order.addOnNote });
       }
+
       (Array.isArray(order.items) ? order.items : []).forEach(item => {
+        const qty = Number(item.qty) || 0;
+        if (qty <= 0 || item.unavailable === true) return;
+
         const key = JSON.stringify([item.name, item.unit]);
         const current = totals.get(key) || { key, name: item.name, unit: item.unit, qty: 0, shops: [] };
-        const qty = Number(item.qty) || 0;
         current.qty += qty;
         current.shops.push(`${order.customerName} (${qty})`);
         totals.set(key, current);
       });
     });
 
-    const addonSection = document.getElementById("addonSection");
     if (addonSection) {
       addonSection.classList.toggle("hidden", addons.length === 0);
-      document.getElementById("addonList").innerHTML = addons.map(addon => `
-        <div class="bg-white/90 p-2.5 rounded-xl border border-amber-200 text-xs text-amber-950">
-          <strong class="text-amber-900">🏪 ${escapeHtml(addon.shop)}:</strong>
-          <div class="text-sm font-semibold">${escapeHtml(addon.note)}</div>
-        </div>`).join("");
+      const addonList = document.getElementById("addonList");
+      if (addonList) {
+        addonList.innerHTML = addons.map(addon => `
+          <div class="bg-white/90 p-2.5 rounded-xl border border-amber-200 text-xs text-amber-950">
+            <strong class="text-amber-900">🏪 ${escapeHtml(addon.shop)}:</strong>
+            <div class="text-sm font-semibold">${escapeHtml(addon.note)}</div>
+          </div>`).join("");
+      }
+    }
+
+    if (totals.size === 0) {
+      list.innerHTML = '<div class="text-center py-8 text-gray-400 bg-white rounded-2xl border">ไม่มีรายการผักที่ต้องซื้อเพิ่ม</div>';
+      return;
     }
 
     list.innerHTML = [...totals.values()].map(item => {
       const bought = state.boughtItems.has(item.key);
-      return `<button data-action="toggle-bought" data-key="${escapeHtml(item.key)}" class="w-full text-left p-3.5 rounded-2xl border-2 flex items-center justify-between gap-3 shadow-sm ${bought ? "checked-box bg-gray-50 border-gray-200" : "bg-white border-gray-200"}">
-        <span class="flex items-center gap-3">
-          <input type="checkbox" ${bought ? "checked" : ""} tabindex="-1" class="w-6 h-6 rounded text-emerald-600 pointer-events-none">
-          <span><strong class="block text-lg ${bought ? "line-through text-gray-400" : "text-gray-900"}">${escapeHtml(item.name)}</strong>
-          <small class="text-gray-500">ร้านที่สั่ง: ${escapeHtml(item.shops.join(", "))}</small></span>
+      return `
+      <button data-action="toggle-bought" data-key="${escapeHtml(item.key)}"
+        class="w-full text-left p-3.5 rounded-2xl border-2 flex items-center justify-between gap-3 shadow-sm transition ${bought ? "checked-box bg-gray-50 border-gray-200" : "bg-white border-gray-200 hover:border-emerald-300"}">
+        <span class="flex items-center gap-3 min-w-0">
+          <input type="checkbox" ${bought ? "checked" : ""} tabindex="-1" class="w-6 h-6 rounded text-emerald-600 pointer-events-none shrink-0">
+          <span class="min-w-0">
+            <strong class="block text-lg truncate ${bought ? "line-through text-gray-400" : "text-gray-900"}">${escapeHtml(item.name)}</strong>
+            <small class="text-gray-500 block truncate">ร้านที่สั่ง: ${escapeHtml(item.shops.join(", "))}</small>
+          </span>
         </span>
-        <span class="text-right whitespace-nowrap"><strong class="text-2xl text-emerald-700 ${bought ? "line-through text-gray-400" : ""}">${escapeHtml(item.qty)}</strong><small class="block text-gray-600">${escapeHtml(item.unit)}</small></span>
+        <span class="text-right whitespace-nowrap shrink-0">
+          <strong class="text-2xl text-emerald-700 ${bought ? "line-through text-gray-400" : ""}">${escapeHtml(item.qty)}</strong>
+          <small class="block text-gray-600">${escapeHtml(item.unit)}</small>
+        </span>
       </button>`;
-    }).join("") || '<div class="text-center py-8 text-gray-400">ไม่มีรายการผัก</div>';
+    }).join("");
   }
 
   function formatOrderTime(timestamp) {
@@ -374,28 +461,48 @@
   }
 
   function orderInvoiceText(order, card) {
-    const lines = [...card.querySelectorAll("[data-unit-price]")].map(input => {
-      const item = order.items[Number(input.dataset.index)];
-      const picked = state.packedItems[`${order.orderId}_${Number(input.dataset.index)}`] === true;
-      const qty = picked ? Number(item.qty) || 0 : 0;
-      const unitPrice = picked ? Number(input.value) || 0 : 0;
+    const isInvoiceSent = hasInvoiceBeenSent(order);
+    let vegetableTotal = 0;
+    const lines = (Array.isArray(order.items) ? order.items : []).map((item, index) => {
+      const input = card && card.querySelector(`[data-unit-price][data-index="${index}"]`);
+      const isPacked = isInvoiceSent
+        ? Number(item.qty) > 0 && item.unavailable !== true
+        : card
+          ? state.packedItems[`${order.orderId}_${index}`] === true
+          : Number(item.qty) > 0 && item.unavailable !== true;
+      const qty = isInvoiceSent ? Number(item.qty) || 0 : isPacked ? Number(item.qty) || 0 : 0;
+      const unitPrice = input && input.value !== ""
+        ? Number(input.value) || 0
+        : Number(item.unitPrice) || 0;
+      if (!isPacked || qty === 0 || item.unavailable === true) {
+        return `• ${item.name}: (ของหมด / ตัดยอด 0 บาท)`;
+      }
       const lineTotal = qty * unitPrice;
+      vegetableTotal += lineTotal;
       return `• ${item.name} ${qty} ${item.unit} × ${unitPrice.toLocaleString("th-TH")} = ${lineTotal.toLocaleString("th-TH")} บาท`;
     });
-    const addOnPriceInput = card.querySelector("[data-addon-price]");
+    const addOnPriceInput = card && card.querySelector("[data-addon-price]");
     const addOnPrice = addOnPriceInput
       ? Number(addOnPriceInput.value) || 0
       : Number(order.addOnPrice) || 0;
-    const total = [...card.querySelectorAll("[data-line-total]")].reduce(
-      (sum, element) => sum + (Number(element.dataset.lineTotal) || 0), 0) + addOnPrice;
+    const total = isInvoiceSent ? Number(order.totalAmount) || 0 : vegetableTotal + addOnPrice;
+    const addOnLine = order.addOnNote && String(order.addOnNote).trim()
+      ? `• สั่งพิเศษ: ${order.addOnNote}${addOnPrice > 0 ? ` = ${addOnPrice.toLocaleString("th-TH")} บาท` : ""}`
+      : "";
+    const noteLine = order.notes && String(order.notes).trim()
+      ? `💬 ข้อความจากร้าน: ${String(order.notes).trim()}`
+      : "";
     return [
       `🧾 ใบส่งของ - ${order.customerName}`,
-      `รอบวันที่ ${order.orderDate}`,
+      `รอบวันที่: ${order.orderDate}`,
+      `เลขที่บิล: ${order.orderId}`,
+      "--------------------------",
       ...lines,
-      ...(order.addOnNote ? [`• สั่งพิเศษ: ${order.addOnNote} = ${addOnPrice.toLocaleString("th-TH")} บาท`] : []),
+      ...(addOnLine ? [addOnLine] : []),
+      "--------------------------",
       `ยอดรวมสุทธิ: ${total.toLocaleString("th-TH", { maximumFractionDigits: 2 })} บาท`,
       `สถานะ: ${order.paymentStatus || "ค้างชำระ"}`,
-      `เลขที่ออเดอร์: ${order.orderId}`
+      ...(noteLine ? ["--------------------------", noteLine] : [])
     ].join("\n");
   }
 
@@ -403,8 +510,8 @@
     const container = document.getElementById("customerCardsContainer");
     if (!container) return;
 
-    const orders = state.currentOrders.filter(order =>
-      String(order.status || "").trim() !== "ยกเลิกแล้ว" || order.adminCancelledAt
+    const allActiveOrders = state.currentOrders.filter(order =>
+      String(order.status || "").trim() !== "ยกเลิกแล้ว" && !order.adminCancelledAt
     ).map(order => {
       const items = Array.isArray(order.items) ? order.items : [];
       const invoiceSent = hasInvoiceBeenSent({ ...order, items });
@@ -414,22 +521,43 @@
           : state.packedItems[`${order.orderId}_${index}`] === true ? 1 : 0), 0);
       return { ...order, items, checked, remaining: items.length - checked, done: items.length > 0 && checked === items.length };
     });
+    const cancelledOrders = state.currentOrders.filter(order =>
+      Boolean(order.adminCancelledAt)
+    ).map(order => {
+      const items = Array.isArray(order.items) ? order.items : [];
+      const invoiceSent = hasInvoiceBeenSent({ ...order, items });
+      const checked = items.reduce((count, item, index) =>
+        count + (invoiceSent
+          ? Number(item.qty) > 0 && item.unavailable !== true ? 1 : 0
+          : state.packedItems[`${order.orderId}_${index}`] === true ? 1 : 0), 0);
+      return { ...order, items, checked, remaining: items.length - checked, done: items.length > 0 && checked === items.length };
+    });
+    const visibleOrders = allActiveOrders.filter(order =>
+      state.packingFilter === "all" ||
+      (state.packingFilter === "paid" && order.paymentStatus === "ชำระแล้ว") ||
+      (state.packingFilter === "pending" && order.paymentStatus !== "ชำระแล้ว")
+    );
 
-    const completed = orders.filter(order =>
+    const completed = allActiveOrders.filter(order =>
       !order.adminCancelledAt && order.done
     ).length;
     const statCompleted = document.getElementById("statCompletedShops");
     if (statCompleted) statCompleted.textContent = completed;
 
-    updateFinanceStats(orders.filter(order => String(order.status || "").trim() !== "ยกเลิกแล้ว"));
-    updatePackingFinanceBar(orders);
+    updateFinanceStats(allActiveOrders);
+    updatePackingFinanceBar([...allActiveOrders, ...cancelledOrders]);
 
-    if (!orders.length) {
+    if (!allActiveOrders.length && !cancelledOrders.length) {
       container.innerHTML = '<div class="text-center py-10 text-gray-400 bg-white rounded-2xl border p-6">ไม่มีรายการสั่งซื้อสำหรับวันที่เลือก</div>';
       return;
     }
 
-    container.innerHTML = orders.map(order => {
+    const filterBar = `<div class="flex items-center justify-between gap-1 bg-gray-200/70 p-1 rounded-xl text-xs font-bold mb-2">
+      <button data-action="filter-orders" data-filter="pending" class="flex-1 py-1.5 rounded-lg text-center transition ${state.packingFilter === "pending" ? "bg-white text-emerald-800 shadow" : "text-gray-500"}">⏳ รอดำเนินการ/ค้างจ่าย</button>
+      <button data-action="filter-orders" data-filter="paid" class="flex-1 py-1.5 rounded-lg text-center transition ${state.packingFilter === "paid" ? "bg-white text-emerald-800 shadow" : "text-gray-500"}">✓ ชำระแล้ว</button>
+      <button data-action="filter-orders" data-filter="all" class="flex-1 py-1.5 rounded-lg text-center transition ${state.packingFilter === "all" ? "bg-white text-emerald-800 shadow" : "text-gray-500"}">ทั้งหมด (${allActiveOrders.length})</button>
+    </div>`;
+    const renderOrderCard = order => {
       const isCancelledByAdmin = Boolean(order.adminCancelledAt);
       const status = isCancelledByAdmin ? "❌ ยกเลิกแล้ว" : order.items.length === 0 ? "ไม่มีรายการ" :
         order.done ? `✓ ครบแล้ว (${order.checked}/${order.items.length})` :
@@ -556,7 +684,20 @@
           </button>
         </div>`}
       </article>`;
-    }).join("");
+    };
+    const cancelledSection = cancelledOrders.length
+      ? `<div class="text-center pt-2">
+          <button data-action="toggle-cancelled-orders" class="text-xs text-gray-400 hover:text-gray-600 underline">
+            ${state.showCancelledOrders ? "▲ ซ่อนบิลที่ยกเลิก" : `▼ แสดงบิลที่ยกเลิกแล้ว (${cancelledOrders.length} บิล)`}
+          </button>
+        </div>
+        <div id="cancelledOrdersContainer" class="${state.showCancelledOrders ? "" : "hidden"} space-y-2 mt-2">
+          ${cancelledOrders.map(renderOrderCard).join("")}
+        </div>`
+      : "";
+    container.innerHTML = `${filterBar}
+      ${visibleOrders.length ? visibleOrders.map(renderOrderCard).join("") : '<div class="text-center py-6 text-gray-400 bg-white rounded-2xl border">ไม่มีบิลในตัวกรองนี้</div>'}
+      ${cancelledSection}`;
   }
 
   async function saveOrderPricing(orderId, button) {
@@ -767,9 +908,9 @@
 
   async function shareOrderInvoice(orderId, button) {
     const order = state.currentOrders.find(item => String(item.orderId) === String(orderId));
-    const card = button.closest("[data-order-card]");
-    if (!order || !card) return;
-    const inputs = [...card.querySelectorAll("[data-unit-price]")];
+    const card = button && button.closest("[data-order-card]");
+    if (!order) return;
+    const inputs = card ? [...card.querySelectorAll("[data-unit-price]")] : [];
     if (inputs.some(input =>
       state.packedItems[`${order.orderId}_${Number(input.dataset.index)}`] === true &&
       (input.value === "" || !Number.isFinite(Number(input.value)) || Number(input.value) < 0))) {
@@ -1471,9 +1612,73 @@
     if (!control) return;
 
     switch (control.dataset.action) {
+      case "filter-orders":
+        if (["pending", "paid", "all"].includes(control.dataset.filter)) {
+          state.packingFilter = control.dataset.filter;
+          renderPackingTab();
+        }
+        break;
+      case "toggle-cancelled-orders":
+        state.showCancelledOrders = !state.showCancelledOrders;
+        renderPackingTab();
+        break;
       case "show-unpaid-shops":
         await showUnpaidShopsModal();
         break;
+      case "quick-share-line":
+        await shareOrderInvoice(control.dataset.orderId, control);
+        break;
+      case "quick-pay-order": {
+        const orderId = control.dataset.orderId;
+        const order = state.currentOrders.find(item => String(item.orderId) === String(orderId));
+        if (!order || order.paymentStatus === "ชำระแล้ว") break;
+
+        const amount = Number(order.totalAmount) || 0;
+        const confirmation = await Swal.fire({
+          title: "ยืนยันรับชำระเงิน?",
+          html: `ต้องการบันทึกว่าร้าน <b>${escapeHtml(order.customerName || control.dataset.shopName)}</b><br>ชำระบิล <b>${escapeHtml(orderId)}</b><br>ยอดเงิน <b class="text-emerald-700">${amount.toLocaleString("th-TH", { maximumFractionDigits: 2 })} ฿</b> เรียบร้อยแล้ว ใช่หรือไม่?`,
+          icon: "question",
+          showCancelButton: true,
+          confirmButtonText: "ใช่, ได้รับเงินแล้ว",
+          cancelButtonText: "ยกเลิก",
+          confirmButtonColor: "#059669",
+          cancelButtonColor: "#6b7280"
+        });
+        if (!confirmation.isConfirmed) {
+          await showUnpaidShopsModal();
+          break;
+        }
+
+        Swal.fire({
+          title: "กำลังบันทึกสถานะ...",
+          allowOutsideClick: false,
+          didOpen: () => Swal.showLoading()
+        });
+        try {
+          const result = await postAction({
+            action: "updatePaymentStatus",
+            orderId,
+            paymentStatus: "ชำระแล้ว"
+          });
+          if (result.success !== true) {
+            throw new Error(result.message || "ระบบไม่ยืนยันการบันทึกสถานะชำระเงิน");
+          }
+
+          order.paymentStatus = "ชำระแล้ว";
+          renderDashboard();
+          Swal.close();
+          await showUnpaidShopsModal();
+        } catch (error) {
+          await Swal.fire({
+            icon: "error",
+            title: "บันทึกไม่สำเร็จ",
+            text: error.message
+          });
+          console.error("บันทึกสถานะชำระเงินจากรายการค้างไม่สำเร็จ", error);
+          await showUnpaidShopsModal();
+        }
+        break;
+      }
       case "create-shop":
         await createShop();
         break;
@@ -1633,6 +1838,17 @@
 
   function initializeEvents() {
     document.body.addEventListener("click", handleClick);
+    document.getElementById("refreshOrdersBtn")?.addEventListener("click", async () => {
+      const refreshed = await loadOrders();
+      Swal.fire({
+        toast: true,
+        position: "top",
+        icon: refreshed ? "success" : "error",
+        title: refreshed ? "รีเฟรชข้อมูลล่าสุดแล้ว" : "รีเฟรชข้อมูลไม่สำเร็จ",
+        showConfirmButton: false,
+        timer: 1200
+      });
+    });
     document.getElementById("todayButton")?.addEventListener("click", () => {
       initializeDate();
       loadOrders();
@@ -1699,6 +1915,7 @@
       initializeEvents();
       setMainMode("daily"); // เริ่มที่โหมดหน้างาน
       await Promise.all([loadOrders(), loadInitialData()]);
+      scheduleMarketDateCutoff();
     } catch (error) {
       console.error("เริ่มต้นระบบไม่สำเร็จ", error);
     }

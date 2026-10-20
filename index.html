@@ -19,50 +19,53 @@
   </script>
 
   <!-- Header -->
-  <header class="bg-emerald-700 text-white p-4 shadow-md sticky top-0 z-40">
-    <div class="max-w-md mx-auto flex flex-wrap justify-between items-center gap-2">
-      <div class="min-w-0 flex-1">
-        <div class="flex flex-wrap items-center justify-between gap-2">
-          <h1 class="text-xl font-extrabold tracking-tight">🥬 ตลาดสดแม่ทิพย์</h1>
-          <div class="flex items-center gap-1 bg-emerald-800/80 p-1 rounded-xl border border-emerald-500">
-            <button onclick="changeFontSize('small')" class="px-2 py-0.5 rounded text-xs font-bold text-white hover:bg-emerald-700" title="ตัวหนังสือปกติ">A</button>
-            <button onclick="changeFontSize('medium')" class="px-2 py-0.5 rounded text-sm font-bold text-white hover:bg-emerald-700" title="ตัวหนังสือใหญ่">A+</button>
-            <button onclick="changeFontSize('large')" class="px-2 py-0.5 rounded text-base font-bold text-amber-300 hover:bg-emerald-700" title="ตัวหนังสือใหญ่พิเศษ">A++</button>
-          </div>
+  <header class="bg-emerald-700 text-white px-4 py-2.5 shadow-md sticky top-0 z-40">
+    <div class="max-w-md mx-auto space-y-1.5">
+      <div class="flex justify-between items-center">
+        <h1 class="text-lg font-black tracking-tight">🥬 ตลาดสดแม่ทิพย์</h1>
+        <div class="flex items-center gap-1 bg-emerald-800/90 p-0.5 rounded-lg border border-emerald-500">
+          <button onclick="changeFontSize('small')" class="px-2 py-0.5 rounded text-xs font-bold text-white hover:bg-emerald-700" title="ตัวหนังสือปกติ">A</button>
+          <button onclick="changeFontSize('medium')" class="px-2 py-0.5 rounded text-sm font-bold text-white hover:bg-emerald-700" title="ตัวหนังสือใหญ่">A+</button>
+          <button onclick="changeFontSize('large')" class="px-2 py-0.5 rounded text-base font-bold text-amber-300 hover:bg-emerald-700" title="ตัวหนังสือใหญ่พิเศษ">A++</button>
         </div>
-        <p class="text-xs text-emerald-100" id="displayMarketDate">รอบตลาดเช้า: กำลังโหลด...</p>
       </div>
-      <button onclick="toggleHistoryModal(true)" class="bg-emerald-800 hover:bg-emerald-900 text-xs px-3 py-2 rounded-xl border border-emerald-500 font-semibold shadow-sm">
-        📋 ดูที่เคยสั่ง
-      </button>
+      <div class="flex justify-between items-center text-xs">
+        <span class="text-emerald-100 font-medium" id="displayMarketDate">รอบตลาดเช้า: กำลังโหลด...</span>
+        <button onclick="toggleHistoryModal(true)" class="bg-emerald-800 hover:bg-emerald-900 text-white text-[11px] px-2.5 py-1 rounded-lg border border-emerald-500 font-bold shadow-sm">
+          📋 ดูที่เคยสั่ง
+        </button>
+      </div>
     </div>
   </header>
 
   <main class="max-w-md mx-auto p-4 space-y-4">
 
     <!-- ข้อมูลร้านค้าของลูกค้า -->
-    <section class="bg-white p-4 rounded-2xl shadow-sm border border-emerald-200 flex justify-between items-center gap-2">
-      <div class="min-w-0">
-        <span class="text-xs font-bold text-emerald-600 uppercase">สั่งซื้อสำหรับร้าน</span>
-        <h2 id="currentShopDisplay" class="text-xl font-extrabold text-gray-800 mt-0.5 truncate">กำลังตรวจสอบร้านค้า...</h2>
+    <section class="bg-white p-3 rounded-2xl shadow-sm border border-emerald-200 flex items-center justify-between gap-2">
+      <div class="min-w-0 flex-1">
+        <span class="text-[10px] font-bold text-emerald-600 uppercase block leading-none">สั่งซื้อสำหรับร้าน</span>
+        <h2 id="currentShopDisplay" class="text-base font-black text-gray-800 truncate mt-0.5">กำลังตรวจสอบร้านค้า...</h2>
       </div>
-      <div id="unpaidSummaryBadge" class="hidden shrink-0 text-right cursor-pointer" onclick="showUnpaidBreakdownModal()" title="แตะเพื่อดูรายละเอียดบิลที่ค้าง">
-        <div class="bg-amber-50 active:bg-amber-100 border border-amber-300 px-3 py-1.5 rounded-xl shadow-sm">
-          <div class="text-[10px] font-bold text-amber-800 flex items-center justify-end gap-1">
-            <span>⚠️ ค้าง <b id="unpaidBillCount">0</b> บิล</span>
-          </div>
-          <div class="text-base font-black text-red-600 leading-tight">
+      <div id="unpaidSummaryBadge" class="hidden shrink-0 cursor-pointer" onclick="showUnpaidBreakdownModal()" title="แตะเพื่อดูรายละเอียดบิลที่ค้าง">
+        <div class="bg-amber-50 active:bg-amber-100 border border-amber-300 px-2.5 py-1 rounded-xl shadow-sm text-center">
+          <div class="text-[9px] font-bold text-amber-800 leading-none">⚠️ ค้าง <b id="unpaidBillCount">0</b> บิล</div>
+          <div class="text-sm font-black text-red-600 leading-tight">
             <span id="unpaidTotalAmount">0</span> <span class="text-xs font-bold text-gray-600">฿</span>
           </div>
         </div>
       </div>
+      <button onclick="loadLastOrderForShop(true)" class="shrink-0 bg-emerald-50 hover:bg-emerald-100 active:bg-emerald-200 border border-emerald-300 text-emerald-800 p-2 rounded-xl text-xs font-bold flex items-center gap-1 shadow-sm transition" title="อัปเดตข้อมูลล่าสุด">
+        <span>🔄 รีเฟรช</span>
+      </button>
     </section>
 
-    <button onclick="loadLastOrderForShop(true)" class="w-full py-3 bg-emerald-50 hover:bg-emerald-100 active:bg-emerald-200 border-2 border-emerald-300 text-emerald-800 rounded-2xl font-extrabold text-sm flex items-center justify-center gap-2 shadow-sm transition">
-      <span>🔄 แตะเพื่ออัปเดตข้อมูล / ดูยอดเงินล่าสุด</span>
-    </button>
-
     <section id="currentOrderCard" class="hidden bg-white p-4 rounded-2xl shadow-sm border border-amber-200 space-y-3"></section>
+    <div id="currentOrderActions" class="hidden -mt-2">
+      <button id="hideCurrentOrderButton" type="button" onclick="hideCurrentOrderCardForHour()" class="w-full py-3 px-4 rounded-xl border-2 border-amber-400 bg-amber-100 hover:bg-amber-200 active:bg-amber-300 text-amber-950 font-extrabold text-sm shadow-sm transition flex items-center justify-center gap-2">
+        <span aria-hidden="true">🙈</span>
+        <span>ซ่อนการ์ดออเดอร์นี้ชั่วคราว 1 ชั่วโมง</span>
+      </button>
+    </div>
 
     <!-- แท็บเมนูสลับขั้นตอน (2 Steps) -->
     <div class="flex bg-gray-200/80 p-1.5 rounded-2xl font-bold text-sm shadow-inner">
@@ -203,11 +206,22 @@
         return;
       }
 
-      box.innerHTML = orders.map(order => `
-        <div class="bg-gray-50 border border-gray-200 p-3.5 rounded-2xl space-y-1.5">
+      box.innerHTML = orders.map(order => {
+        const status = String(order.status || "").trim();
+        const isCancelled = status === "ยกเลิกแล้ว";
+        const isPaid = order.paymentStatus === "ชำระแล้ว";
+        const statusLabel = isCancelled ? "ยกเลิกแล้ว" : isPaid ? "ชำระแล้ว" : status;
+        const cardClass = isCancelled ? "bg-red-50 border-red-300" : "bg-gray-50 border-gray-200";
+        const statusClass = isCancelled
+          ? "bg-red-600 text-white font-bold"
+          : isPaid || status === "จัดแล้ว"
+            ? "bg-emerald-100 text-emerald-700 font-bold"
+            : "bg-amber-100 text-amber-700 font-bold";
+        return `
+        <div class="${cardClass} border p-3.5 rounded-2xl space-y-1.5">
           <div class="flex justify-between items-center text-xs pb-1.5 border-b">
             <span class="font-bold text-gray-700">รอบวันที่: ${escapeHtml(order.orderDate)}</span>
-            <span class="px-2.5 py-0.5 rounded-full ${order.status === 'จัดแล้ว' ? 'bg-emerald-100 text-emerald-700 font-bold' : 'bg-amber-100 text-amber-700 font-bold'}">${escapeHtml(order.status)}</span>
+            <span class="px-2.5 py-0.5 rounded-full ${statusClass}">${escapeHtml(statusLabel)}</span>
           </div>
           <div class="pt-1 text-sm space-y-1.5">
             ${(Array.isArray(order.items) ? order.items : []).map(item => {
@@ -226,7 +240,8 @@
           ${order.addOnNote ? `<div class="mt-1.5 p-2 bg-yellow-50 rounded-xl text-xs text-amber-900 font-medium"><b>สั่งพิเศษ:</b> ${escapeHtml(order.addOnNote)}${Number(order.addOnPrice) > 0 ? ` · ${Number(order.addOnPrice).toLocaleString('th-TH', { maximumFractionDigits: 2 })} บาท` : ''}</div>` : ''}
           ${order.notes ? `<div class="mt-1.5 p-2 bg-sky-50 rounded-xl text-xs text-sky-900"><b>หมายเหตุ:</b> ${escapeHtml(order.notes)}</div>` : ''}
         </div>
-      `).join('');
+      `;
+      }).join('');
     }
 
     function calculateMarketDate() {
@@ -315,13 +330,33 @@
 
     function renderCurrentOrderCard() {
       const card = document.getElementById("currentOrderCard");
+      const actions = document.getElementById("currentOrderActions");
       if (!currentOrder ||
           currentOrder.paymentStatus === "ชำระแล้ว" ||
           String(currentOrder.status || "").trim() === "ยกเลิกแล้ว") {
         card.classList.add("hidden");
         card.innerHTML = "";
+        actions.classList.add("hidden");
         return;
       }
+
+      const now = new Date();
+      const noonCutoff = new Date(`${currentOrder.orderDate}T12:00:00+07:00`);
+      if (!Number.isNaN(noonCutoff.getTime()) && now >= noonCutoff) {
+        card.classList.add("hidden");
+        card.innerHTML = "";
+        actions.classList.add("hidden");
+        return;
+      }
+
+      const hideUntil = Number(localStorage.getItem(`hide_order_${currentOrder.orderId}`) || 0);
+      if (hideUntil && Date.now() < hideUntil) {
+        card.classList.add("hidden");
+        card.innerHTML = "";
+        actions.classList.add("hidden");
+        return;
+      }
+      if (hideUntil) localStorage.removeItem(`hide_order_${currentOrder.orderId}`);
 
       const locked = customerOrderIsLocked(currentOrder);
       const hasInvoice = customerOrderHasInvoice(currentOrder);
@@ -358,7 +393,9 @@
             <h3 class="font-extrabold text-gray-900">🧾 ออเดอร์รอบนี้</h3>
             <p class="text-xs text-gray-500">รอบวันที่ ${escapeHtml(currentOrder.orderDate)} · ${escapeHtml(currentOrder.orderId)}</p>
           </div>
-          <span class="rounded-full bg-amber-100 text-amber-800 px-2.5 py-1 text-xs font-bold">${escapeHtml(currentOrder.status)}</span>
+          <div class="flex flex-col items-end gap-1">
+            <span class="rounded-full bg-amber-100 text-amber-800 px-2.5 py-1 text-xs font-bold">${escapeHtml(currentOrder.status)}</span>
+          </div>
         </div>
         <ul class="space-y-1 text-sm">${itemSummary || '<li class="text-gray-500">ไม่มีรายการผัก</li>'}</ul>
         ${hasPricing ? `<div class="flex justify-between items-center border-t pt-2">
@@ -374,6 +411,14 @@
         </div>
         ${lockNotice}`;
       card.classList.remove("hidden");
+      actions.classList.remove("hidden");
+    }
+
+    function hideCurrentOrderCardForHour() {
+      if (!currentOrder) return;
+      localStorage.setItem(`hide_order_${currentOrder.orderId}`, String(Date.now() + 60 * 60 * 1000));
+      renderCurrentOrderCard();
+      window.setTimeout(renderCurrentOrderCard, 60 * 60 * 1000);
     }
 
     async function init() {

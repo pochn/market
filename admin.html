@@ -33,15 +33,18 @@
       </div>
 
       <!-- แถบเลือกรอบวันที่ (แสดงในโหมดหน้างาน) -->
-      <div id="headerDateBar" class="flex items-center gap-2">
-        <label class="flex items-center gap-1.5 bg-emerald-900/80 p-1.5 px-2 rounded-xl text-xs border border-emerald-700 flex-1 min-w-0">
-          <span class="text-emerald-200 font-semibold whitespace-nowrap text-[11px]">รอบ:</span>
-          <input type="date" id="selectedDate" class="bg-white text-gray-800 px-1.5 py-1 rounded-lg text-xs font-bold w-full focus:outline-none">
-          <button id="todayButton" class="bg-emerald-600 active:bg-emerald-700 px-2 py-1 rounded-lg text-xs font-bold text-white shadow shrink-0">วันนี้</button>
+      <div id="headerDateBar" class="flex items-center gap-1.5 justify-between">
+        <label class="flex items-center gap-1 bg-emerald-900/80 p-1 px-2 rounded-xl text-xs border border-emerald-700 shrink-0">
+          <span class="text-emerald-200 font-semibold text-[11px]">รอบ:</span>
+          <input type="date" id="selectedDate" class="bg-white text-gray-800 px-1 py-0.5 rounded-lg text-xs font-bold focus:outline-none">
+          <button id="todayButton" class="bg-emerald-600 active:bg-emerald-700 px-2 py-0.5 rounded-lg text-xs font-bold text-white shadow shrink-0">วันนี้</button>
         </label>
-        <button type="button" id="headerUnpaidBadge" data-action="show-unpaid-shops" class="flex items-center justify-between gap-1.5 bg-amber-500/20 hover:bg-amber-500/30 border border-amber-400/60 px-2.5 py-1.5 rounded-xl cursor-pointer text-xs shrink-0 transition shadow-inner">
+        <button type="button" id="headerUnpaidBadge" data-action="show-unpaid-shops" class="flex items-center gap-1 bg-amber-500/25 hover:bg-amber-500/35 border border-amber-400/60 px-2 py-1 rounded-xl cursor-pointer text-xs transition shadow-inner">
           <span class="text-amber-200 font-bold text-[11px] whitespace-nowrap">⚠️ ค้าง: <b id="headerUnpaidCount" class="text-white text-xs">0</b> ร้าน</span>
           <span class="font-black text-amber-300 text-xs whitespace-nowrap">(<span id="headerUnpaidTotal">0</span> ฿)</span>
+        </button>
+        <button id="refreshOrdersBtn" class="bg-emerald-700 hover:bg-emerald-600 active:bg-emerald-800 border border-emerald-500 text-white px-2.5 py-1 rounded-xl text-xs font-bold shadow flex items-center gap-1 shrink-0 transition">
+          <span>🔄 รีเฟรช</span>
         </button>
       </div>
 
