@@ -28,6 +28,9 @@
   const adminFontSizes = { xsmall: 0.85, small: 1, medium: 1.15, large: 1.3, xlarge: 1.45 };
   let activeAdminTextScale = 1;
   let adminTextSizeObserver;
+  let adminAuthToken = "";
+  let loginLockoutInterval = 0;
+  let adminInitialized = false;
 
   function applyAdminTextScale(elements, captureInitial = false) {
     const allElements = new Set();
@@ -216,6 +219,10 @@
     const response = await fetch(url, options);
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const result = await response.json();
+    if (result && result.code === "AUTH_REQUIRED") {
+      expireAdminSession();
+      throw new Error(result.message || "กรุณาเข้าสู่ระบบแอดมินอีกครั้ง");
+    }
     if (result && result.success === false) throw new Error(result.error || result.message || "คำขอไม่สำเร็จ");
     return result;
   }
@@ -224,8 +231,217 @@
     return requestJson(config.APPS_SCRIPT_URL, {
       method: "POST",
       headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({ ...payload, adminToken: adminAuthToken })
+    });
+  }
+
+  async function postAuthAction(payload) {
+    const response = await fetch(config.APPS_SCRIPT_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
       body: JSON.stringify(payload)
     });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return response.json();
+  }
+
+  function clearStoredAdminTokens() {
+    try {
+      localStorage.removeItem("maethip_admin_auth");
+      sessionStorage.removeItem("maethip_admin_auth");
+    } catch (error) {
+      console.warn("ลบสถานะเข้าสู่ระบบแอดมินที่บันทึกไว้ไม่สำเร็จ", error);
+    }
+  }
+
+  function showLoginError(message) {
+    const errorElement = document.getElementById("loginError");
+    if (!errorElement) return;
+    errorElement.textContent = message;
+    errorElement.classList.remove("hidden");
+  }
+
+  function hideAdminWorkspace() {
+    document.getElementById("adminHeader")?.classList.add("hidden");
+    document.getElementById("adminApp")?.classList.add("hidden");
+    document.getElementById("adminLoginOverlay")?.classList.remove("hidden");
+  }
+
+  function expireAdminSession() {
+    adminAuthToken = "";
+    clearStoredAdminTokens();
+    hideAdminWorkspace();
+  }
+
+  function showLockoutState(lockoutUntil) {
+    const form = document.getElementById("adminLoginForm");
+    const banner = document.getElementById("loginLockoutBanner");
+    const timer = document.getElementById("lockoutTimer");
+    const submit = document.getElementById("loginSubmitBtn");
+    if (loginLockoutInterval) window.clearInterval(loginLockoutInterval);
+    if (form) form.classList.add("hidden");
+    if (banner) banner.classList.remove("hidden");
+    if (submit) submit.disabled = true;
+
+    const updateTimer = () => {
+      const diff = lockoutUntil - Date.now();
+      if (diff <= 0) {
+        window.clearInterval(loginLockoutInterval);
+        loginLockoutInterval = 0;
+        if (form) form.classList.remove("hidden");
+        if (banner) banner.classList.add("hidden");
+        if (submit) submit.disabled = false;
+        return;
+      }
+      const mins = Math.floor(diff / 60000);
+      const secs = Math.floor((diff % 60000) / 1000);
+      if (timer) timer.textContent = `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+    };
+
+    updateTimer();
+    loginLockoutInterval = window.setInterval(updateTimer, 1000);
+  }
+
+  async function startAdminWorkspace() {
+    document.getElementById("adminLoginOverlay")?.classList.add("hidden");
+    document.getElementById("adminHeader")?.classList.remove("hidden");
+    document.getElementById("adminApp")?.classList.remove("hidden");
+    if (adminInitialized) {
+      await Promise.all([loadOrders(), loadInitialData()]);
+      return;
+    }
+    adminInitialized = true;
+    try {
+      initializeAdminFontSize();
+      initializeAdminCardSize();
+      initializeDate();
+      await loadComponents();
+      initializeEvents();
+      setMainMode("daily");
+      await Promise.all([loadOrders(), loadInitialData()]);
+      scheduleMarketDateCutoff();
+    } catch (error) {
+      adminInitialized = false;
+      console.error("เริ่มต้นระบบไม่สำเร็จ", error);
+      Swal.fire({
+        icon: "error",
+        title: "เริ่มต้นระบบไม่สำเร็จ",
+        text: error.message,
+        confirmButtonColor: "#059669"
+      });
+    }
+  }
+
+  async function initializeAdminAuth() {
+    const form = document.getElementById("adminLoginForm");
+    form?.addEventListener("submit", async event => {
+      event.preventDefault();
+      const submit = document.getElementById("loginSubmitBtn");
+      const errorElement = document.getElementById("loginError");
+      const warning = document.getElementById("attemptWarning");
+      if (errorElement) errorElement.classList.add("hidden");
+      if (warning) warning.classList.add("hidden");
+      if (submit) submit.disabled = true;
+
+      try {
+        const result = await postAuthAction({
+          action: "adminLogin",
+          username: document.getElementById("adminUser").value,
+          password: document.getElementById("adminPass").value,
+          remember: document.getElementById("rememberMe").checked
+        });
+        if (result.success) {
+          adminAuthToken = result.token;
+          clearStoredAdminTokens();
+          try {
+            const storage = document.getElementById("rememberMe").checked ? localStorage : sessionStorage;
+            storage.setItem("maethip_admin_auth", adminAuthToken);
+          } catch (storageError) {
+            console.warn("บันทึกสถานะเข้าสู่ระบบแอดมินในอุปกรณ์ไม่สำเร็จ", storageError);
+          }
+          document.getElementById("adminPass").value = "";
+          await startAdminWorkspace();
+          Swal.fire({
+            toast: true,
+            position: "top",
+            icon: "success",
+            title: "เข้าสู่ระบบสำเร็จ",
+            timer: 1500,
+            showConfirmButton: false
+          });
+          return;
+        }
+        if (result.locked && result.lockoutUntil) {
+          showLockoutState(Number(result.lockoutUntil));
+          return;
+        }
+        if (result.setupRequired) {
+          showLoginError(`${result.message} กรุณาตั้งค่าใน Project Settings > Script Properties แล้ว Deploy เวอร์ชันใหม่`);
+          return;
+        }
+        if (Number.isFinite(Number(result.remainingAttempts))) {
+          const remaining = document.getElementById("remainingAttempts");
+          if (remaining) remaining.textContent = String(result.remainingAttempts);
+          if (warning) warning.classList.remove("hidden");
+          Swal.fire({
+            icon: "error",
+            title: "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง",
+            text: `คุณสามารถลองใหม่ได้อีก ${result.remainingAttempts} ครั้ง ก่อนระบบจะถูกล็อก`,
+            confirmButtonColor: "#dc2626"
+          });
+          return;
+        }
+        showLoginError(result.message || "เข้าสู่ระบบไม่สำเร็จ");
+      } catch (error) {
+        showLoginError(`เชื่อมต่อระบบเข้าสู่ระบบไม่สำเร็จ: ${error.message}`);
+      } finally {
+        if (submit && !loginLockoutInterval) submit.disabled = false;
+      }
+    });
+
+    let savedToken = "";
+    try {
+      savedToken = localStorage.getItem("maethip_admin_auth") ||
+        sessionStorage.getItem("maethip_admin_auth") || "";
+    } catch (error) {
+      console.warn("อ่านสถานะเข้าสู่ระบบแอดมินไม่สำเร็จ", error);
+    }
+    try {
+      const result = await postAuthAction({
+        action: "adminValidateSession",
+        adminToken: savedToken
+      });
+      if (result.success) {
+        adminAuthToken = savedToken;
+        return true;
+      }
+      if (result.locked && result.lockoutUntil) {
+        showLockoutState(Number(result.lockoutUntil));
+        return false;
+      }
+    } catch (error) {
+      showLoginError(`ตรวจสอบสถานะเข้าสู่ระบบไม่สำเร็จ: ${error.message}`);
+      return false;
+    }
+    clearStoredAdminTokens();
+    return false;
+  }
+
+  async function adminLogout() {
+    const token = adminAuthToken;
+    expireAdminSession();
+    try {
+      await postAuthAction({ action: "adminLogout", adminToken: token });
+      window.location.reload();
+    } catch (error) {
+      await Swal.fire({
+        icon: "warning",
+        title: "ออกจากระบบในอุปกรณ์นี้แล้ว",
+        text: `ยกเลิก session บนเซิร์ฟเวอร์ไม่สำเร็จ (${error.message}) token จะหมดอายุตามกำหนด`,
+        confirmButtonColor: "#059669"
+      });
+      window.location.reload();
+    }
   }
 
   // โหลดคอมโพเนนต์ย่อย tab-market, tab-packing, tab-items, tab-shops
@@ -282,7 +498,11 @@
     if (container) container.innerHTML = '<div class="text-center py-10 text-gray-400">กำลังโหลดข้อมูล...</div>';
 
     try {
-      const data = await requestJson(`${config.APPS_SCRIPT_URL}?action=getAdminOrders&date=${encodeURIComponent(date)}`);
+      const data = await requestJson(config.APPS_SCRIPT_URL, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify({ action: "adminGetOrders", date, adminToken: adminAuthToken })
+      });
       state.currentOrders = (Array.isArray(data.orders) ? data.orders : [])
         .map((order, index) => ({ order, index }))
         .sort((a, b) => getOrderTimestamp(b.order) - getOrderTimestamp(a.order) || a.index - b.index)
@@ -313,7 +533,11 @@
   // โหลดข้อมูลผักและร้านค้าทั้งหมด
   async function loadInitialData() {
     try {
-      const data = await requestJson(`${config.APPS_SCRIPT_URL}?action=getInitialData`);
+      const data = await requestJson(config.APPS_SCRIPT_URL, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify({ action: "adminGetInitialData", adminToken: adminAuthToken })
+      });
       if (data.success) {
         state.vegetables = Array.isArray(data.vegetables) ? data.vegetables : [];
         state.allShops = Array.isArray(data.customers) ? data.customers : [];
@@ -540,6 +764,79 @@
         </span>
       </button>`;
     }).join("");
+  }
+
+  async function copyMarketDispatch() {
+    const selectedDate = document.getElementById("selectedDate")?.value || "";
+    const pendingOrders = state.currentOrders.filter(order =>
+      String(order.status || "").trim() !== "ยกเลิกแล้ว" && !hasInvoiceBeenSent(order)
+    );
+
+    if (!pendingOrders.length) {
+      await Swal.fire({
+        icon: "info",
+        title: "ไม่มีรายการที่ต้องซื้อ",
+        text: "รอบนี้ยังไม่มีออเดอร์ หรือจัดของและส่งบิลครบทุกร้านแล้ว",
+        confirmButtonColor: "#059669"
+      });
+      return;
+    }
+
+    const totals = new Map();
+    const addons = [];
+    pendingOrders.forEach(order => {
+      if (order.addOnNote && String(order.addOnNote).trim()) {
+        addons.push({ shop: order.customerName, note: String(order.addOnNote).trim() });
+      }
+
+      (Array.isArray(order.items) ? order.items : []).forEach(item => {
+        const qty = Number(item.qty) || 0;
+        if (qty <= 0 || item.unavailable === true) return;
+
+        const key = JSON.stringify([item.name, item.unit]);
+        const current = totals.get(key) || { name: item.name, unit: item.unit, qty: 0, shops: [] };
+        current.qty += qty;
+        current.shops.push(`${order.customerName} (${qty})`);
+        totals.set(key, current);
+      });
+    });
+
+    const vegLines = [...totals.values()].map(item =>
+      `• ${item.name} : ${item.qty} ${item.unit} [${item.shops.join(", ")}]`
+    );
+    const addonLines = addons.map(addon => `• ${addon.shop}: ${addon.note}`);
+    const message = [
+      "🥬 รายการจ่ายตลาดสดแม่ทิพย์",
+      `รอบวันที่: ${selectedDate}`,
+      "--------------------------",
+      vegLines.length ? vegLines.join("\n") : "ไม่มีรายการผัก",
+      "--------------------------",
+      ...(addonLines.length
+        ? ["⚠️ ของสั่งพิเศษนอกเมนู:", ...addonLines, "--------------------------"]
+        : []),
+      `รวมทั้งหมด ${pendingOrders.length} ร้านค้า`
+    ].join("\n");
+
+    try {
+      await navigator.clipboard.writeText(message);
+    } catch (error) {
+      if (window.prompt("คัดลอกรายการจ่ายตลาดรวม:", message) === null) return;
+    }
+
+    const confirmShare = await Swal.fire({
+      title: "📋 คัดลอกรายการตลาดแล้ว!",
+      html: 'คัดลอกรายการผักทั้งหมดเรียบร้อยแล้ว<br><span class="text-xs text-gray-500">ต้องการเปิด LINE เพื่อส่งให้คนช่วยซื้อหรือคนขับรถเลยหรือไม่?</span>',
+      icon: "success",
+      showCancelButton: true,
+      confirmButtonText: "📲 ส่งเข้า LINE",
+      cancelButtonText: "ปิด",
+      confirmButtonColor: "#059669",
+      cancelButtonColor: "#6b7280"
+    });
+
+    if (confirmShare.isConfirmed) {
+      window.location.href = `line://msg/text/${encodeURIComponent(message)}`;
+    }
   }
 
   function formatOrderTime(timestamp) {
@@ -839,7 +1136,7 @@
           <span class="text-sm font-extrabold text-gray-800">ยอดรวมสุทธิ</span>
           <strong class="text-base text-emerald-800"><span data-order-total>${initialOrderTotal.toLocaleString("th-TH", { maximumFractionDigits: 2 })}</span> บาท</strong>
         </div>
-        ${isCancelledByAdmin ? "" : `<div class="grid grid-cols-4 gap-1.5 pt-2 border-t border-gray-100">
+        ${isCancelledByAdmin ? "" : `<div class="grid grid-cols-5 gap-1 pt-2 border-t border-gray-100">
           <button ${isLocked ? "disabled" : `data-action="save-invoice" data-order-id="${escapeHtml(order.orderId)}"`} class="min-w-0 py-2 px-1 rounded-xl text-[10px] sm:text-xs font-bold flex items-center justify-center gap-1 transition shadow-sm ${isLocked ? "bg-slate-700 text-white cursor-default" : "bg-emerald-600 hover:bg-emerald-700 text-white"}">
             <span>${isLocked ? "✓ ส่งแล้ว" : isInvoiceSent ? "📤 ส่งใหม่" : "📤 ส่งบิล"}</span>
           </button>
@@ -853,6 +1150,9 @@
           </button>
           <button data-action="share-order-invoice" data-order="${escapeHtml(order.orderId)}" class="min-w-0 py-2 px-1 rounded-xl text-[10px] sm:text-xs font-bold border flex items-center justify-center gap-1 shadow-sm transition ${hasSharedLine ? "bg-emerald-800 text-white border-emerald-900" : "bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-300"}">
             <span>${hasSharedLine ? "✓ ส่ง LINE" : "📲 LINE"}</span>
+          </button>
+          <button data-action="share-order-messenger" data-order="${escapeHtml(order.orderId)}" class="min-w-0 py-2 px-1 rounded-xl text-[10px] sm:text-xs font-bold border border-blue-300 bg-blue-50 hover:bg-blue-100 text-blue-700 flex items-center justify-center gap-1 shadow-sm transition" title="คัดลอกบิลและเปิด Messenger">
+            <span>💬 แชท</span>
           </button>
         </div>`}
       </article>`;
@@ -1104,6 +1404,54 @@
     }
     renderPackingTab();
     window.location.href = `line://msg/text/${encodeURIComponent(message)}`;
+  }
+
+  async function shareOrderMessenger(orderId, button) {
+    const order = state.currentOrders.find(item => String(item.orderId) === String(orderId));
+    const card = button && button.closest("[data-order-card]");
+    if (!order) return;
+
+    const isInvoiceSent = hasInvoiceBeenSent(order);
+    const inputs = card ? [...card.querySelectorAll("[data-unit-price]")] : [];
+    if (!isInvoiceSent && (!card || inputs.some(input =>
+      state.packedItems[`${order.orderId}_${Number(input.dataset.index)}`] === true &&
+      (input.value === "" || !Number.isFinite(Number(input.value)) || Number(input.value) < 0)))) {
+      alert("กรุณากรอกราคาต่อหน่วยให้ครบทุกสินค้าที่จัด ก่อนแชร์ใบส่งของ");
+      return;
+    }
+    const addOnPriceInput = card && card.querySelector("[data-addon-price]");
+    const addOnPrice = addOnPriceInput
+      ? Number(addOnPriceInput.value || 0)
+      : Number(order.addOnPrice) || 0;
+    if (order.addOnNote && (!Number.isFinite(addOnPrice) || addOnPrice < 0)) {
+      alert("กรุณากรอกราคาของสั่งพิเศษเป็นจำนวนตั้งแต่ 0 บาทขึ้นไป ก่อนแชร์ใบส่งของ");
+      return;
+    }
+
+    const message = orderInvoiceText(order, card);
+    try {
+      await navigator.clipboard.writeText(message);
+    } catch (error) {
+      if (window.prompt("คัดลอกข้อความสรุปยอดเพื่อนำไปวางใน Messenger:", message) === null) return;
+    }
+
+    await Swal.fire({
+      toast: true,
+      position: "top",
+      icon: "success",
+      title: "คัดลอกบิลแล้ว!",
+      text: 'กำลังเปิด Messenger ให้แตะที่ช่องพิมพ์แล้วกด "วาง" ส่งได้เลย',
+      showConfirmButton: false,
+      timer: 1600,
+      timerProgressBar: true
+    });
+
+    window.location.href = "fb-messenger://";
+    window.setTimeout(() => {
+      if (document.visibilityState === "visible") {
+        window.location.href = "https://www.messenger.com/";
+      }
+    }, 1500);
   }
 
 // ==============================================
@@ -1361,17 +1709,15 @@
       ordersContainer.innerHTML = '<div class="text-center py-8 text-gray-400 bg-white rounded-2xl border">กำลังโหลดประวัติร้านค้า...</div>';
     }
     try {
-      let result;
-      try {
-        result = await requestJson(
-          `${config.APPS_SCRIPT_URL}?action=getShopFullHistory&shopName=${encodeURIComponent(shopName)}`
-        );
-      } catch (error) {
-        if (error.message !== "Invalid action") throw error;
-        result = await requestJson(
-          `${config.APPS_SCRIPT_URL}?action=getCustomerHistory&customerName=${encodeURIComponent(shopName)}`
-        );
-      }
+      const result = await requestJson(config.APPS_SCRIPT_URL, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify({
+          action: "adminGetShopFullHistory",
+          shopName,
+          adminToken: adminAuthToken
+        })
+      });
       if (requestId !== shopHistoryRequestId || state.selectedHistoryShop !== shopName) return;
       state.shopHistoryOrders = Array.isArray(result.orders) ? result.orders : [];
       renderShopHistory();
@@ -1797,6 +2143,12 @@
       case "show-unpaid-shops":
         await showUnpaidShopsModal();
         break;
+      case "admin-logout":
+        await adminLogout();
+        break;
+      case "copy-market-dispatch":
+        await copyMarketDispatch();
+        break;
       case "open-admin-display-settings":
         await openAdminDisplaySettingsModal();
         break;
@@ -1943,6 +2295,9 @@
       case "share-order-invoice":
         await shareOrderInvoice(control.dataset.order, control);
         break;
+      case "share-order-messenger":
+        await shareOrderMessenger(control.dataset.order, control);
+        break;
       case "toggle-history-payment":
         await toggleHistoryPayment(control.dataset.orderId);
         break;
@@ -2084,18 +2439,8 @@
   }
 
   async function initialize() {
-    try {
-      initializeAdminFontSize();
-      initializeAdminCardSize();
-      initializeDate();
-      await loadComponents();
-      initializeEvents();
-      setMainMode("daily"); // เริ่มที่โหมดหน้างาน
-      await Promise.all([loadOrders(), loadInitialData()]);
-      scheduleMarketDateCutoff();
-    } catch (error) {
-      console.error("เริ่มต้นระบบไม่สำเร็จ", error);
-    }
+    const isAuthenticated = await initializeAdminAuth();
+    if (isAuthenticated) await startAdminWorkspace();
   }
 
   initialize();

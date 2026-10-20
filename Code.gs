@@ -183,13 +183,89 @@ function buildOrderItems(rawItems, itemMap, savedPrices) {
 // ==========================================
 // 1. ฟังก์ชัน doGet สำหรับดึงข้อมูล (GET Request)
 // ==========================================
+function getAdminTokenKey_(token) {
+  const digest = Utilities.computeDigest(
+    Utilities.DigestAlgorithm.SHA_256,
+    String(token),
+    Utilities.Charset.UTF_8
+  );
+  return "ADMIN_SESSION_" + Utilities.base64EncodeWebSafe(digest);
+}
+
+function isValidAdminToken_(token) {
+  if (!token || typeof token !== "string") return false;
+  const properties = PropertiesService.getScriptProperties();
+  const sessionKey = getAdminTokenKey_(token);
+  const expiresAt = Number(properties.getProperty(sessionKey) || 0);
+  if (!expiresAt || Date.now() >= expiresAt) {
+    if (expiresAt) properties.deleteProperty(sessionKey);
+    return false;
+  }
+  return true;
+}
+
+function handleAdminLogin_(data) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    const properties = PropertiesService.getScriptProperties();
+    const username = properties.getProperty("ADMIN_USERNAME");
+    const password = properties.getProperty("ADMIN_PASSWORD");
+    if (!username || !password) {
+      return {
+        success: false,
+        setupRequired: true,
+        message: "ยังไม่ได้ตั้งค่า ADMIN_USERNAME และ ADMIN_PASSWORD ใน Script Properties"
+      };
+    }
+
+    const now = Date.now();
+    const lockoutUntil = Number(properties.getProperty("ADMIN_LOCKOUT_UNTIL") || 0);
+    if (now < lockoutUntil) {
+      return { success: false, locked: true, lockoutUntil: lockoutUntil };
+    }
+    if (lockoutUntil) {
+      properties.deleteProperty("ADMIN_LOCKOUT_UNTIL");
+      properties.deleteProperty("ADMIN_FAILED_ATTEMPTS");
+    }
+
+    if (String(data.username || "") !== username || String(data.password || "") !== password) {
+      const attempts = Number(properties.getProperty("ADMIN_FAILED_ATTEMPTS") || 0) + 1;
+      if (attempts >= 3) {
+        const newLockoutUntil = now + 20 * 60 * 1000;
+        properties.setProperty("ADMIN_LOCKOUT_UNTIL", String(newLockoutUntil));
+        properties.setProperty("ADMIN_FAILED_ATTEMPTS", "3");
+        return { success: false, locked: true, lockoutUntil: newLockoutUntil };
+      }
+      properties.setProperty("ADMIN_FAILED_ATTEMPTS", String(attempts));
+      return { success: false, remainingAttempts: 3 - attempts };
+    }
+
+    properties.deleteProperty("ADMIN_LOCKOUT_UNTIL");
+    properties.deleteProperty("ADMIN_FAILED_ATTEMPTS");
+    const token = Utilities.getUuid() + Utilities.getUuid();
+    const lifetime = data.remember === true ? 30 : 12;
+    properties.setProperty(
+      getAdminTokenKey_(token),
+      String(now + lifetime * 60 * 60 * 1000)
+    );
+    return { success: true, token: token, expiresInHours: lifetime };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
 function doGet(e) {
   const action = e.parameter.action;
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   
   try {
     // 1.1 ดึงรายการผักและรายชื่อร้านค้าทั้งหมด
-    if (action === "getInitialData") {
+    if (action === "getInitialData" || action === "getAdminInitialData") {
+      const isAdminRequest = action === "getAdminInitialData";
+      if (isAdminRequest && !isValidAdminToken_(e.parameter.adminToken)) {
+        return responseJSON({ success: false, code: "AUTH_REQUIRED", message: "กรุณาเข้าสู่ระบบแอดมินอีกครั้ง" });
+      }
       const itemsSheet = ss.getSheetByName(SHEET_ITEMS);
       const shopsSheet = ss.getSheetByName(SHEET_SHOPS);
       
@@ -214,7 +290,7 @@ function doGet(e) {
         customers = shopRows.map(r => ({
           id: String(r[0]),
           name: String(r[1]),
-          contact: r[2] ? String(r[2]) : ""
+          ...(isAdminRequest ? { contact: r[2] ? String(r[2]) : "" } : {})
         }));
       }
       
@@ -228,6 +304,9 @@ function doGet(e) {
     
     // 1.2 ดึงออเดอร์สำหรับหน้า Admin
     if (action === "getAdminOrders") {
+      if (!isValidAdminToken_(e.parameter.adminToken)) {
+        return responseJSON({ success: false, code: "AUTH_REQUIRED", message: "กรุณาเข้าสู่ระบบแอดมินอีกครั้ง" });
+      }
       const targetDate = e.parameter.date;
       const orderSheet = ss.getSheetByName(SHEET_ORDERS);
       const itemsSheet = ss.getSheetByName(SHEET_ITEMS);
@@ -291,6 +370,9 @@ function doGet(e) {
     
     // 1.3 ดึงประวัติย้อนหลังของลูกค้าแต่ละร้าน (สำหรับ index.html)
     if (action === "getCustomerHistory" || action === "getShopFullHistory") {
+      if (action === "getShopFullHistory" && !isValidAdminToken_(e.parameter.adminToken)) {
+        return responseJSON({ success: false, code: "AUTH_REQUIRED", message: "กรุณาเข้าสู่ระบบแอดมินอีกครั้ง" });
+      }
       const customerName = action === "getShopFullHistory" ? e.parameter.shopName : e.parameter.customerName;
       const orderSheet = ss.getSheetByName(SHEET_ORDERS);
       const itemsSheet = ss.getSheetByName(SHEET_ITEMS);
@@ -362,6 +444,62 @@ function doGet(e) {
 function doPost(e) {
   try {
     const data = JSON.parse(e.postData.contents);
+    if (data.action === "adminLogin") {
+      return responseJSON(handleAdminLogin_(data));
+    }
+    if (data.action === "adminValidateSession") {
+      if (isValidAdminToken_(data.adminToken)) {
+        return responseJSON({ success: true });
+      }
+      const lockoutUntil = Number(
+        PropertiesService.getScriptProperties().getProperty("ADMIN_LOCKOUT_UNTIL") || 0
+      );
+      if (Date.now() < lockoutUntil) {
+        return responseJSON({ success: false, locked: true, lockoutUntil: lockoutUntil });
+      }
+      return responseJSON({ success: false });
+    }
+    if (data.action === "adminLogout") {
+      const token = data.adminToken;
+      if (token && typeof token === "string") {
+        PropertiesService.getScriptProperties().deleteProperty(getAdminTokenKey_(token));
+      }
+      return responseJSON({ success: true });
+    }
+    if (data.action === "adminGetOrders") {
+      return doGet({
+        parameter: {
+          action: "getAdminOrders",
+          adminToken: data.adminToken,
+          date: data.date
+        }
+      });
+    }
+    if (data.action === "adminGetInitialData") {
+      return doGet({
+        parameter: {
+          action: "getAdminInitialData",
+          adminToken: data.adminToken
+        }
+      });
+    }
+    if (data.action === "adminGetShopFullHistory") {
+      return doGet({
+        parameter: {
+          action: "getShopFullHistory",
+          adminToken: data.adminToken,
+          shopName: data.shopName
+        }
+      });
+    }
+
+    const isCustomerAction = data.action === "createOrder" ||
+      data.action === "updateCustomerOrder" ||
+      (data.action === "cancelOrder" && Boolean(data.customerName));
+    if (!isCustomerAction && !isValidAdminToken_(data.adminToken)) {
+      return responseJSON({ success: false, code: "AUTH_REQUIRED", message: "กรุณาเข้าสู่ระบบแอดมินอีกครั้ง" });
+    }
+
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const orderSheet = ss.getSheetByName(SHEET_ORDERS);
     const itemsSheet = ss.getSheetByName(SHEET_ITEMS);
