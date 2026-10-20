@@ -90,7 +90,7 @@
   }
 
   function initializeAdminFontSize() {
-    let size = "medium";
+    let size = "large";
     try {
       const savedSize = localStorage.getItem("admin_font_size");
       if (Object.prototype.hasOwnProperty.call(adminFontSizes, savedSize)) size = savedSize;
@@ -119,7 +119,7 @@
   }
 
   function initializeAdminCardSize() {
-    let size = "medium";
+    let size = "large";
     try {
       const savedSize = localStorage.getItem("admin_card_size");
       if (["small", "medium", "large"].includes(savedSize)) size = savedSize;

@@ -2,7 +2,7 @@
 <html lang="th">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>สั่งผักสดตลาดเช้า - แม่ทิพย์</title>
   <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
   <script src="https://cdn.tailwindcss.com"></script>
@@ -19,9 +19,9 @@
     body[data-card-size="large"] #vegGrid [data-action="toggle-select-veg"],
     body[data-card-size="large"] #selectedVegList > div,
     body[data-card-size="large"] #currentOrderCard { padding: 1.25rem !important; }
-    body[data-card-size="small"] #vegGrid [data-action="toggle-select-veg"] > div:nth-child(2) { width: 4rem !important; height: 4rem !important; }
-    body[data-card-size="medium"] #vegGrid [data-action="toggle-select-veg"] > div:nth-child(2) { width: 5rem !important; height: 5rem !important; }
-    body[data-card-size="large"] #vegGrid [data-action="toggle-select-veg"] > div:nth-child(2) { width: 6rem !important; height: 6rem !important; }
+    #vegGrid [data-action="toggle-select-veg"] > div:nth-child(2) { width: 5.5rem !important; height: 5.5rem !important; }
+    body[data-card-size="small"] #vegGrid [data-action="toggle-select-veg"] > div:nth-child(2) { width: 4.5rem !important; height: 4.5rem !important; }
+    body[data-card-size="large"] #vegGrid [data-action="toggle-select-veg"] > div:nth-child(2) { width: 6.5rem !important; height: 6.5rem !important; }
   </style>
 </head>
 <body class="bg-gray-100 min-h-screen pb-28 text-gray-800">
@@ -33,7 +33,7 @@
 
   <!-- Header -->
   <header class="bg-emerald-700 text-white px-2 py-2 sm:px-4 shadow-md sticky top-0 z-40">
-    <div class="max-w-md mx-auto space-y-1.5">
+    <div class="w-full max-w-2xl mx-auto space-y-1.5">
       <div class="flex justify-between items-center gap-2">
         <h1 class="text-lg font-black tracking-tight">🥬 ตลาดสดแม่ทิพย์</h1>
       </div>
@@ -62,10 +62,10 @@
     </div>
   </header>
 
-  <main class="max-w-md mx-auto px-1.5 py-3 sm:p-4 space-y-3">
+  <main class="w-full max-w-2xl mx-auto px-1 py-2 space-y-2.5">
 
     <!-- ข้อมูลร้านค้าของลูกค้า -->
-    <section class="bg-white p-3 rounded-2xl shadow-sm border border-emerald-200 flex items-center justify-between gap-2">
+    <section class="bg-white p-2.5 rounded-xl shadow-sm border border-emerald-200 flex items-center justify-between gap-2">
       <div class="min-w-0 flex-1">
         <span class="text-[10px] font-bold text-emerald-600 uppercase block leading-none">สั่งซื้อสำหรับร้าน</span>
         <h2 id="currentShopDisplay" class="text-base font-black text-gray-800 truncate mt-0.5">กำลังตรวจสอบร้านค้า...</h2>
@@ -115,7 +115,7 @@
       <input type="text" id="searchBox" oninput="filterVegList()" placeholder="🔍 ค้นหาชื่อผัก เช่น คะน้า, แตง..." class="w-full p-3 bg-white border border-gray-300 rounded-xl text-base focus:ring-2 focus:ring-emerald-500 focus:outline-none shadow-sm">
 
       <!-- ตารางการ์ดผักแบบสัมผัสง่าย -->
-      <div id="vegGrid" class="grid grid-cols-2 gap-2">
+      <div id="vegGrid" class="grid grid-cols-2 gap-1.5">
         <div class="col-span-2 text-center py-12 text-gray-400 text-sm">กำลังโหลดข้อมูลผัก...</div>
       </div>
     </div>
@@ -156,7 +156,7 @@
 
   <!-- แถบด้านล่างสำหรับเปลี่ยนหน้า หรือ กดยืนยันส่ง -->
   <div class="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-2 sm:p-3 shadow-2xl z-30">
-    <div class="max-w-md mx-auto">
+    <div class="w-full max-w-2xl mx-auto px-1">
       <!-- ปุ่มสำหรับแท็บ 1: ไปต่อแท็บ 2 -->
       <div id="bottomBarTab1" class="flex items-center justify-between gap-3">
         <div class="pl-2">
@@ -526,7 +526,7 @@
     }
 
     async function init() {
-      let savedFontSize = "medium";
+      let savedFontSize = "large";
       try {
         const storedFontSize = localStorage.getItem("user_font_size");
         if (["xsmall", "small", "medium", "large", "xlarge"].includes(storedFontSize)) savedFontSize = storedFontSize;
@@ -534,7 +534,7 @@
         console.warn("อ่านขนาดตัวอักษรที่บันทึกไว้ไม่สำเร็จ", error);
       }
       changeFontSize(savedFontSize);
-      let savedCardSize = "medium";
+      let savedCardSize = "large";
       try {
         const storedCardSize = localStorage.getItem("user_card_size");
         if (["small", "medium", "large"].includes(storedCardSize)) savedCardSize = storedCardSize;
