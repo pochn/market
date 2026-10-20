@@ -25,6 +25,38 @@
     }
   }
 
+  const adminFontSizes = { small: "100%", medium: "115%", large: "130%" };
+
+  function setAdminFontSize(size) {
+    if (!Object.prototype.hasOwnProperty.call(adminFontSizes, size)) return;
+    document.documentElement.style.fontSize = adminFontSizes[size];
+    document.querySelectorAll(".admin-font-size-button").forEach(button => {
+      const isActive = button.dataset.fontSize === size;
+      button.setAttribute("aria-pressed", String(isActive));
+      button.classList.toggle("bg-white", isActive);
+      button.classList.toggle("text-emerald-900", isActive);
+      button.classList.toggle("shadow", isActive);
+      button.classList.toggle("text-emerald-100", !isActive && button.dataset.fontSize !== "large");
+      button.classList.toggle("text-amber-300", !isActive && button.dataset.fontSize === "large");
+    });
+    try {
+      localStorage.setItem("admin_font_size", size);
+    } catch (error) {
+      console.warn("บันทึกขนาดตัวอักษรแอดมินไม่สำเร็จ", error);
+    }
+  }
+
+  function initializeAdminFontSize() {
+    let size = "medium";
+    try {
+      const savedSize = localStorage.getItem("admin_font_size");
+      if (Object.prototype.hasOwnProperty.call(adminFontSizes, savedSize)) size = savedSize;
+    } catch (error) {
+      console.warn("อ่านขนาดตัวอักษรแอดมินที่บันทึกไว้ไม่สำเร็จ", error);
+    }
+    setAdminFontSize(size);
+  }
+
   const panelByTab = {
     market: "marketPanel",
     packing: "packingPanel",
@@ -1625,6 +1657,9 @@
       case "show-unpaid-shops":
         await showUnpaidShopsModal();
         break;
+      case "set-admin-font-size":
+        setAdminFontSize(control.dataset.fontSize);
+        break;
       case "quick-share-line":
         await shareOrderInvoice(control.dataset.orderId, control);
         break;
@@ -1910,6 +1945,7 @@
 
   async function initialize() {
     try {
+      initializeAdminFontSize();
       initializeDate();
       await loadComponents();
       initializeEvents();

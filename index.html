@@ -8,6 +8,7 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>
+    html { font-size: 115%; }
     body { font-family: 'Prompt', sans-serif; -webkit-tap-highlight-color: transparent; }
   </style>
 </head>
@@ -196,7 +197,11 @@
       const fontSizes = { small: "100%", medium: "115%", large: "130%" };
       if (!Object.prototype.hasOwnProperty.call(fontSizes, size)) return;
       document.documentElement.style.fontSize = fontSizes[size];
-      localStorage.setItem("user_font_size", size);
+      try {
+        localStorage.setItem("user_font_size", size);
+      } catch (error) {
+        console.warn("บันทึกขนาดตัวอักษรไม่สำเร็จ", error);
+      }
     }
 
     function renderOrderHistory(orders) {
@@ -422,8 +427,14 @@
     }
 
     async function init() {
-      const savedFontSize = localStorage.getItem("user_font_size");
-      if (savedFontSize) changeFontSize(savedFontSize);
+      let savedFontSize = "medium";
+      try {
+        const storedFontSize = localStorage.getItem("user_font_size");
+        if (["small", "medium", "large"].includes(storedFontSize)) savedFontSize = storedFontSize;
+      } catch (error) {
+        console.warn("อ่านขนาดตัวอักษรที่บันทึกไว้ไม่สำเร็จ", error);
+      }
+      changeFontSize(savedFontSize);
       calculateMarketDate();
       initShopIdentity();
       initializeDynamicItemActions();
