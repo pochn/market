@@ -54,6 +54,21 @@ function isCustomerOrderLocked(row) {
   return now >= `${orderDate} ${cutoffTime}:00`;
 }
 
+function isOrderLockedByDelivery(row, billingColumns) {
+  const status = String(row[6] || "").trim();
+  if (status === "จัดแล้ว" || status === "ยกเลิกแล้ว") return true;
+
+  const totalAmount = billingColumns.TotalAmount
+    ? Number(row[billingColumns.TotalAmount - 1])
+    : 0;
+  const savedPrices = parseUnitPrices(
+    billingColumns.UnitPrices ? row[billingColumns.UnitPrices - 1] : ""
+  );
+  return totalAmount > 0 || savedPrices.some(price =>
+    price && price.unitPrice !== undefined && price.unitPrice !== null && price.unitPrice !== ""
+  );
+}
+
 function findOrderRow(orderSheet, orderId) {
   if (!orderSheet || !orderId) return -1;
   const rows = orderSheet.getDataRange().getValues();
@@ -92,7 +107,7 @@ function getOrderBillingColumns(sheet, createMissing) {
   let headers = sheet.getRange(1, 1, 1, lastColumn).getValues()[0];
   const columns = {};
 
-  ["Payment", "UnitPrices", "TotalAmount"].forEach(name => {
+  ["Payment", "UnitPrices", "TotalAmount", "InvoiceSentAt"].forEach(name => {
     let index = headers.findIndex(header => String(header).trim().toLowerCase() === name.toLowerCase());
     if (index < 0 && createMissing) {
       index = lastColumn;
@@ -113,6 +128,41 @@ function parseUnitPrices(value) {
   } catch (err) {
     return [];
   }
+}
+
+function buildOrderItems(rawItems, itemMap, savedPrices) {
+  const savedPriceQueues = Object.create(null);
+  savedPrices.forEach(saved => {
+    const key = `${saved.name}_${saved.unit}`;
+    if (!savedPriceQueues[key]) savedPriceQueues[key] = [];
+    savedPriceQueues[key].push(saved);
+  });
+
+  return rawItems.map(it => {
+    const item = it.itemId && itemMap[it.itemId]
+      ? {
+          name: itemMap[it.itemId].name,
+          qty: it.qty !== undefined && it.qty !== null ? it.qty : 1,
+          originalQty: it.originalQty,
+          unit: itemMap[it.itemId].unit
+        }
+      : {
+          name: it.name || it.itemId || "ไม่ระบุ",
+          qty: it.qty !== undefined && it.qty !== null ? it.qty : 1,
+          originalQty: it.originalQty,
+          unit: it.unit || "กก."
+        };
+    const savedQueue = savedPriceQueues[`${item.name}_${item.unit}`];
+    const saved = savedQueue && savedQueue.shift();
+    if (saved) {
+      item.unitPrice = saved.unitPrice;
+      if (saved.qty !== undefined && saved.qty !== null) item.qty = Number(saved.qty);
+      if (saved.unavailable === true || (saved.qty !== undefined && Number(saved.qty) === 0)) {
+        item.unavailable = true;
+      }
+    }
+    return item;
+  });
 }
 
 // ==========================================
@@ -199,30 +249,7 @@ function doGet(e) {
         const savedPrices = parseUnitPrices(
           billingColumns.UnitPrices ? r[billingColumns.UnitPrices - 1] : ""
         );
-        const priceMap = {};
-        savedPrices.forEach(saved => {
-          priceMap[`${saved.name}_${saved.unit}`] = saved.unitPrice;
-        });
-        const parsedItems = rawItems.map(it => {
-          const item = it.itemId && itemMap[it.itemId]
-            ? {
-                name: itemMap[it.itemId].name,
-                qty: it.qty,
-                originalQty: it.originalQty,
-                unit: itemMap[it.itemId].unit
-              }
-            : {
-                name: it.name || it.itemId || "ไม่ระบุ",
-                qty: it.qty || 1,
-                originalQty: it.originalQty,
-                unit: it.unit || "กก."
-              };
-          const priceKey = `${item.name}_${item.unit}`;
-          if (Object.prototype.hasOwnProperty.call(priceMap, priceKey)) {
-            item.unitPrice = priceMap[priceKey];
-          }
-          return item;
-        });
+        const parsedItems = buildOrderItems(rawItems, itemMap, savedPrices);
         
         return {
           orderId: r[0] || "",
@@ -235,6 +262,7 @@ function doGet(e) {
           notes: r[7] || "",
           paymentStatus: billingColumns.Payment ? (r[billingColumns.Payment - 1] || "ค้างชำระ") : "ค้างชำระ",
           totalAmount: billingColumns.TotalAmount ? (Number(r[billingColumns.TotalAmount - 1]) || 0) : 0,
+          invoiceSentAt: billingColumns.InvoiceSentAt ? (r[billingColumns.InvoiceSentAt - 1] || "") : "",
           hasPricing: savedPrices.length > 0 && parsedItems.every(item =>
             Object.prototype.hasOwnProperty.call(item, "unitPrice"))
         };
@@ -244,8 +272,8 @@ function doGet(e) {
     }
     
     // 1.3 ดึงประวัติย้อนหลังของลูกค้าแต่ละร้าน (สำหรับ index.html)
-    if (action === "getCustomerHistory") {
-      const customerName = e.parameter.customerName;
+    if (action === "getCustomerHistory" || action === "getShopFullHistory") {
+      const customerName = action === "getShopFullHistory" ? e.parameter.shopName : e.parameter.customerName;
       const orderSheet = ss.getSheetByName(SHEET_ORDERS);
       const itemsSheet = ss.getSheetByName(SHEET_ITEMS);
       
@@ -266,7 +294,6 @@ function doGet(e) {
       const customerOrders = rows
         .filter(r => String(r[3]).trim() === String(customerName).trim())
         .reverse()
-        .slice(0, 30)
         .map(r => {
           let rawItems = [];
           try {
@@ -280,42 +307,20 @@ function doGet(e) {
           const savedPrices = parseUnitPrices(
             billingColumns.UnitPrices ? r[billingColumns.UnitPrices - 1] : ""
           );
-          const priceMap = {};
-          savedPrices.forEach(saved => {
-            priceMap[`${saved.name}_${saved.unit}`] = saved.unitPrice;
-          });
-          
-          const parsedItems = rawItems.map(it => {
-            const item = it.itemId && itemMap[it.itemId]
-              ? {
-                name: itemMap[it.itemId].name,
-                qty: it.qty,
-                originalQty: it.originalQty,
-                unit: itemMap[it.itemId].unit
-              }
-              : {
-                name: it.name || it.itemId || "ไม่ระบุ",
-                qty: it.qty || 1,
-                originalQty: it.originalQty,
-                unit: it.unit || "กก."
-              };
-            const priceKey = `${item.name}_${item.unit}`;
-            if (Object.prototype.hasOwnProperty.call(priceMap, priceKey)) {
-              item.unitPrice = priceMap[priceKey];
-            }
-            return item;
-          });
+          const parsedItems = buildOrderItems(rawItems, itemMap, savedPrices);
           
           return {
             orderId: r[0] || "",
             timestamp: r[1] ? String(r[1]) : "",
             orderDate: formatDate(r[2]),
+            customerName: r[3] || "",
             items: parsedItems,
             addOnNote: r[5] || "",
             status: r[6] || "รอดำเนินการ",
             notes: r[7] || "",
             paymentStatus: billingColumns.Payment ? (r[billingColumns.Payment - 1] || "ค้างชำระ") : "ค้างชำระ",
             totalAmount: billingColumns.TotalAmount ? (Number(r[billingColumns.TotalAmount - 1]) || 0) : 0,
+            invoiceSentAt: billingColumns.InvoiceSentAt ? (r[billingColumns.InvoiceSentAt - 1] || "") : "",
             hasPricing: savedPrices.length > 0 && parsedItems.every(item =>
               Object.prototype.hasOwnProperty.call(item, "unitPrice"))
           };
@@ -375,7 +380,12 @@ function doPost(e) {
         status,
         notes
       ];
-      while (newRow.length < Math.max(billingColumns.Payment, billingColumns.UnitPrices, billingColumns.TotalAmount)) {
+      while (newRow.length < Math.max(
+        billingColumns.Payment,
+        billingColumns.UnitPrices,
+        billingColumns.TotalAmount,
+        billingColumns.InvoiceSentAt
+      )) {
         newRow.push("");
       }
       newRow[billingColumns.Payment - 1] = "ค้างชำระ";
@@ -398,6 +408,14 @@ function doPost(e) {
       }
       if (!data.customerName || String(row[3]).trim() !== String(data.customerName).trim()) {
         return responseJSON({ success: false, message: "Order does not belong to this customer" });
+      }
+      const billingColumns = getOrderBillingColumns(orderSheet, false);
+      if (isOrderLockedByDelivery(row, billingColumns)) {
+        return responseJSON({
+          success: false,
+          lockedByDelivery: true,
+          message: "ไม่สามารถยกเลิกหรือแก้ไขได้ เนื่องจากแม่ทิพย์จัดของและออกใบส่งของเรียบร้อยแล้ว กรุณาติดต่อแม่ทิพย์โดยตรง"
+        });
       }
       if (isCustomerOrderLocked(row)) {
         return responseJSON({ success: false, message: "หมดเวลาแก้ไข/ยกเลิกสำหรับรอบนี้แล้ว กรุณาโทรติดต่อแม่ทิพย์โดยตรง" });
@@ -424,9 +442,9 @@ function doPost(e) {
         }))),
         addOnNote || ""
       ]]);
-      const billingColumns = getOrderBillingColumns(orderSheet, false);
       if (billingColumns.UnitPrices) orderSheet.getRange(rowNumber, billingColumns.UnitPrices).clearContent();
       if (billingColumns.TotalAmount) orderSheet.getRange(rowNumber, billingColumns.TotalAmount).clearContent();
+      if (billingColumns.InvoiceSentAt) orderSheet.getRange(rowNumber, billingColumns.InvoiceSentAt).clearContent();
       if (billingColumns.Payment) orderSheet.getRange(rowNumber, billingColumns.Payment).setValue("ค้างชำระ");
       return responseJSON({ success: true, orderId: orderId });
     }
@@ -478,6 +496,7 @@ function doPost(e) {
           const billingColumns = getOrderBillingColumns(orderSheet, false);
           if (billingColumns.UnitPrices) orderSheet.getRange(i + 1, billingColumns.UnitPrices).clearContent();
           if (billingColumns.TotalAmount) orderSheet.getRange(i + 1, billingColumns.TotalAmount).clearContent();
+          if (billingColumns.InvoiceSentAt) orderSheet.getRange(i + 1, billingColumns.InvoiceSentAt).clearContent();
           return responseJSON({ success: true });
         }
       }
@@ -504,6 +523,7 @@ function doPost(e) {
           unit: String(item.unit || ""),
           qty: qty,
           unitPrice: unitPrice,
+          unavailable: item.unavailable === true || qty === 0,
           lineTotal: lineTotal
         });
       }
@@ -511,9 +531,11 @@ function doPost(e) {
       const billingColumns = getOrderBillingColumns(orderSheet, true);
       for (let i = 1; i < rows.length; i++) {
         if (String(rows[i][0]) === String(data.orderId)) {
+          const invoiceSentAt = Utilities.formatDate(new Date(), "Asia/Bangkok", "HH:mm") + " น.";
           orderSheet.getRange(i + 1, billingColumns.UnitPrices).setValue(JSON.stringify(pricedItems));
           orderSheet.getRange(i + 1, billingColumns.TotalAmount).setValue(totalAmount);
-          return responseJSON({ success: true, totalAmount: totalAmount });
+          orderSheet.getRange(i + 1, billingColumns.InvoiceSentAt).setValue(invoiceSentAt);
+          return responseJSON({ success: true, totalAmount: totalAmount, invoiceSentAt: invoiceSentAt });
         }
       }
       return responseJSON({ success: false, message: "Order not found" });

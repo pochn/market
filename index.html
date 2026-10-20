@@ -41,10 +41,20 @@
   <main class="max-w-md mx-auto p-4 space-y-4">
 
     <!-- ข้อมูลร้านค้าของลูกค้า -->
-    <section class="bg-white p-4 rounded-2xl shadow-sm border border-emerald-200">
-      <div>
+    <section class="bg-white p-4 rounded-2xl shadow-sm border border-emerald-200 flex justify-between items-center gap-2">
+      <div class="min-w-0">
         <span class="text-xs font-bold text-emerald-600 uppercase">สั่งซื้อสำหรับร้าน</span>
-        <h2 id="currentShopDisplay" class="text-xl font-extrabold text-gray-800 mt-0.5">กำลังตรวจสอบร้านค้า...</h2>
+        <h2 id="currentShopDisplay" class="text-xl font-extrabold text-gray-800 mt-0.5 truncate">กำลังตรวจสอบร้านค้า...</h2>
+      </div>
+      <div id="unpaidSummaryBadge" class="hidden shrink-0 text-right cursor-pointer" onclick="showUnpaidBreakdownModal()" title="แตะเพื่อดูรายละเอียดบิลที่ค้าง">
+        <div class="bg-amber-50 active:bg-amber-100 border border-amber-300 px-3 py-1.5 rounded-xl shadow-sm">
+          <div class="text-[10px] font-bold text-amber-800 flex items-center justify-end gap-1">
+            <span>⚠️ ค้าง <b id="unpaidBillCount">0</b> บิล</span>
+          </div>
+          <div class="text-base font-black text-red-600 leading-tight">
+            <span id="unpaidTotalAmount">0</span> <span class="text-xs font-bold text-gray-600">฿</span>
+          </div>
+        </div>
       </div>
     </section>
 
@@ -164,16 +174,11 @@
     let cutoffTime = "00:00";
     let currentOrder = null;
     let editingOrderId = "";
-    const HISTORY_CACHE_TTL = 12 * 60 * 60 * 1000;
-
+    let unpaidBills = [];
     function escapeHtml(value) {
       return String(value ?? "").replace(/[&<>"']/g, char => ({
         "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
       })[char]);
-    }
-
-    function historyCacheKey() {
-      return `history_cache_${currentShop}`;
     }
 
     function changeFontSize(size) {
@@ -284,6 +289,7 @@
     function customerOrderHasInvoice(order) {
       return Boolean(order && (
         order.hasPricing === true ||
+        order.invoiceSentAt ||
         Number(order.totalAmount) > 0 ||
         (Array.isArray(order.items) && order.items.some(item =>
           item.unitPrice !== undefined && item.unitPrice !== null && item.unitPrice !== ""))
@@ -315,6 +321,17 @@
         const quantity = Number(item.qty) || 0;
         const unitPrice = Number(item.unitPrice) || 0;
         const amount = quantity * unitPrice;
+        const isOutOfStock = quantity === 0 || item.unavailable === true ||
+          (hasPricing && Number(item.unitPrice) === 0);
+        if (isOutOfStock) {
+          return `<li class="flex justify-between items-center py-1.5 border-b border-gray-100 text-gray-400">
+            <div>
+              <span class="line-through font-semibold text-gray-400">${escapeHtml(item.name)}</span>
+              <span class="text-[10px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded font-bold ml-1">ของหมด / ไม่ได้ของ</span>
+            </div>
+            <div class="text-right"><span class="text-xs text-gray-400 line-through">0 บาท</span></div>
+          </li>`;
+        }
         return `<li class="flex justify-between gap-3">
           <span>${escapeHtml(item.name)}<span class="block text-xs text-gray-500">${escapeHtml(item.qty)} ${escapeHtml(item.unit)}${hasPricing ? ` × ${unitPrice.toLocaleString("th-TH")} บาท/${escapeHtml(item.unit)}` : ""}</span></span>
           <span class="font-bold whitespace-nowrap">${hasPricing ? `${amount.toLocaleString("th-TH", { maximumFractionDigits: 2 })} บาท` : `${escapeHtml(item.qty)} ${escapeHtml(item.unit)}`}</span>
@@ -397,13 +414,6 @@
         }
         return;
       }
-      if (forceRefresh) {
-        try {
-          localStorage.removeItem(historyCacheKey());
-        } catch (error) {
-          console.warn("ล้างแคชประวัติการสั่งซื้อไม่สำเร็จ", error);
-        }
-      }
       selectedVegNames.clear();
       cartItems = {};
       currentOrder = null;
@@ -418,6 +428,8 @@
         if (data.success !== true || !Array.isArray(data.orders)) {
           throw new Error(data.error || data.message || "รูปแบบข้อมูลประวัติไม่ถูกต้อง");
         }
+        unpaidBills = data.orders;
+        renderUnpaidSummary();
         currentOrder = data.orders.find(order =>
           order.orderDate === marketDate && String(order.status || "").trim() !== "ยกเลิกแล้ว") || null;
         if (editingOrderId && currentOrder && customerOrderIsLocked(currentOrder)) {
@@ -456,6 +468,8 @@
           });
         }
       } catch (err) {
+        unpaidBills = [];
+        renderUnpaidSummary();
         currentOrder = null;
         renderCurrentOrderCard();
         console.error("โหลดประวัติออเดอร์ล่าสุดไม่สำเร็จ", err);
@@ -495,8 +509,49 @@
         renderCurrentOrderCard();
         return;
       }
-      if (!window.confirm("ยืนยันยกเลิกออเดอร์รอบนี้หรือไม่?")) return;
       try {
+        Swal.fire({
+          title: 'กำลังตรวจสอบสถานะออเดอร์...',
+          text: 'กรุณารอสักครู่',
+          allowOutsideClick: false,
+          didOpen: () => Swal.showLoading()
+        });
+        const historyResponse = await fetch(
+          `${APPS_SCRIPT_URL}?action=getCustomerHistory&customerName=${encodeURIComponent(currentShop)}`,
+          { cache: "no-store" }
+        );
+        if (!historyResponse.ok) throw new Error(`HTTP ${historyResponse.status}`);
+        const historyData = await historyResponse.json();
+        if (historyData.success !== true || !Array.isArray(historyData.orders)) {
+          throw new Error(historyData.error || historyData.message || "รูปแบบข้อมูลประวัติไม่ถูกต้อง");
+        }
+        const latestOrder = historyData.orders.find(order =>
+          String(order.orderId) === String(currentOrder.orderId));
+        Swal.close();
+        if (!latestOrder || customerOrderIsLocked(latestOrder)) {
+          await Swal.fire({
+            icon: 'error',
+            title: 'ไม่สามารถดำเนินการได้!',
+            text: latestOrder && !customerOrderHasInvoice(latestOrder) &&
+              String(latestOrder.status || "").trim() !== "จัดแล้ว" &&
+              String(latestOrder.status || "").trim() !== "ยกเลิกแล้ว"
+                ? 'หมดเวลาแก้ไข/ยกเลิกสำหรับรอบนี้แล้ว กรุณาโทรติดต่อแม่ทิพย์โดยตรง'
+                : 'แม่ทิพย์ได้ออกใบส่งของเรียบร้อยแล้ว กรุณาโทรติดต่อแม่ทิพย์',
+            confirmButtonColor: '#059669'
+          });
+          await loadLastOrderForShop(true);
+          return;
+        }
+        const confirmation = await Swal.fire({
+          icon: 'warning',
+          title: 'ยืนยันยกเลิกออเดอร์รอบนี้หรือไม่?',
+          showCancelButton: true,
+          confirmButtonText: 'ยืนยันยกเลิก',
+          cancelButtonText: 'กลับ',
+          confirmButtonColor: '#dc2626'
+        });
+        if (!confirmation.isConfirmed) return;
+
         const response = await fetch(APPS_SCRIPT_URL, {
           method: "POST",
           headers: { "Content-Type": "text/plain;charset=utf-8" },
@@ -507,11 +562,15 @@
           })
         });
         const result = await response.json();
-        if (!result.success) throw new Error(result.message || result.error || "ยกเลิกออเดอร์ไม่สำเร็จ");
-        try {
-          localStorage.removeItem(historyCacheKey());
-        } catch (error) {
-          console.warn("ล้างแคชประวัติการสั่งซื้อไม่สำเร็จ", error);
+        if (!result.success) {
+          await Swal.fire({
+            icon: 'error',
+            title: 'ไม่สามารถดำเนินการได้!',
+            text: result.message || 'แม่ทิพย์ได้ออกใบส่งของเรียบร้อยแล้ว กรุณาโทรติดต่อแม่ทิพย์',
+            confirmButtonColor: '#059669'
+          });
+          await loadLastOrderForShop(true);
+          return;
         }
         currentOrder = null;
         editingOrderId = "";
@@ -525,10 +584,20 @@
         renderSelectedVegList();
         renderCurrentOrderCard();
         switchTab(1);
-        alert("ยกเลิกออเดอร์เรียบร้อยแล้ว");
+        await Swal.fire({
+          icon: 'success',
+          title: 'ยกเลิกออเดอร์เรียบร้อยแล้ว',
+          confirmButtonColor: '#059669'
+        });
       } catch (error) {
-        alert(error.message);
-        await loadLastOrderForShop();
+        Swal.close();
+        await Swal.fire({
+          icon: 'error',
+          title: 'ไม่สามารถดำเนินการได้!',
+          text: error.message || 'กรุณาลองใหม่อีกครั้ง หรือโทรติดต่อแม่ทิพย์',
+          confirmButtonColor: '#059669'
+        });
+        await loadLastOrderForShop(true);
       }
     }
 
@@ -726,6 +795,58 @@
       }
     }
 
+    function renderUnpaidSummary() {
+      const badge = document.getElementById("unpaidSummaryBadge");
+      const bills = unpaidBills.filter(order =>
+        String(order.status || "").trim() !== "ยกเลิกแล้ว" &&
+        order.paymentStatus === "ค้างชำระ" && Number(order.totalAmount) > 0);
+      window.currentUnpaidBills = bills;
+      if (!badge) return;
+      if (bills.length === 0) {
+        badge.classList.add("hidden");
+        return;
+      }
+
+      const total = bills.reduce((sum, order) => sum + (Number(order.totalAmount) || 0), 0);
+      document.getElementById("unpaidBillCount").textContent = bills.length;
+      document.getElementById("unpaidTotalAmount").textContent =
+        total.toLocaleString("th-TH", { maximumFractionDigits: 2 });
+      badge.classList.remove("hidden");
+    }
+
+    function showUnpaidBreakdownModal() {
+      const bills = window.currentUnpaidBills || [];
+      if (!bills.length) return;
+
+      const billRowsHtml = bills.map(bill => `
+        <div class="flex justify-between items-center py-1.5 border-b border-gray-100 text-sm">
+          <div class="text-left">
+            <span class="font-bold text-gray-800">รอบวันที่ ${escapeHtml(bill.orderDate)}</span>
+            <small class="block text-gray-400 font-mono text-[11px]">${escapeHtml(bill.orderId)}</small>
+          </div>
+          <div class="text-right font-black text-red-600">
+            ${Number(bill.totalAmount).toLocaleString("th-TH", { maximumFractionDigits: 2 })} ฿
+          </div>
+        </div>
+      `).join("");
+      const total = bills.reduce((sum, bill) => sum + (Number(bill.totalAmount) || 0), 0);
+
+      Swal.fire({
+        title: '📋 รายละเอียดบิลค้างชำระ',
+        html: `
+          <div class="text-left mt-2 max-h-60 overflow-y-auto space-y-1">
+            ${billRowsHtml}
+          </div>
+          <div class="flex justify-between items-center pt-3 border-t mt-3 text-base font-extrabold">
+            <span class="text-gray-700">ยอดรวมทั้งหมด:</span>
+            <span class="text-red-600 text-lg">${total.toLocaleString("th-TH", { maximumFractionDigits: 2 })} บาท</span>
+          </div>
+        `,
+        confirmButtonText: 'รับทราบ / ปิด',
+        confirmButtonColor: '#059669'
+      });
+    }
+
     // ================== SUBMIT ORDER ==================
     async function submitOrder() {
       if (!currentShop) {
@@ -818,11 +939,6 @@
         const result = await res.json();
 
         if (result.success) {
-          try {
-            localStorage.removeItem(historyCacheKey());
-          } catch (error) {
-            console.warn("ล้างแคชประวัติการสั่งซื้อไม่สำเร็จ", error);
-          }
           const wasEditing = Boolean(editingOrderId);
           editingOrderId = "";
           document.getElementById("editingOrderNotice").classList.add("hidden");
@@ -836,6 +952,16 @@
           await loadLastOrderForShop();
           switchTab(1);
         } else {
+          if (editingOrderId) {
+            await Swal.fire({
+              icon: 'error',
+              title: 'ไม่สามารถดำเนินการได้!',
+              text: result.message || 'แม่ทิพย์ได้ออกใบส่งของเรียบร้อยแล้ว กรุณาโทรติดต่อแม่ทิพย์',
+              confirmButtonColor: '#059669'
+            });
+            await loadLastOrderForShop(true);
+            return;
+          }
           throw new Error(result.error || result.message || "ไม่สามารถส่งคำสั่งซื้อได้");
         }
       } catch (e) {
@@ -868,55 +994,16 @@
         }
         modal.classList.remove('hidden');
         const box = document.getElementById('historyContent');
-        const key = historyCacheKey();
-        let cachedHistory = null;
-
+        box.innerHTML = '<p class="text-center text-gray-400 py-6">กำลังโหลดประวัติ...</p>';
         try {
-          let stored = null;
-          try {
-            stored = localStorage.getItem(key);
-          } catch (error) {
-            console.warn("อ่านแคชประวัติการสั่งซื้อไม่สำเร็จ", error);
-          }
-          if (stored) {
-            try {
-              const parsed = JSON.parse(stored);
-              if (parsed && Array.isArray(parsed.orders) &&
-                  Number.isFinite(parsed.cachedAt) && Date.now() >= parsed.cachedAt &&
-                  Date.now() - parsed.cachedAt < HISTORY_CACHE_TTL) {
-                cachedHistory = parsed.orders;
-              } else {
-                try {
-                  localStorage.removeItem(key);
-                } catch (error) {
-                  console.warn("ล้างแคชประวัติที่หมดอายุไม่สำเร็จ", error);
-                }
-              }
-            } catch (error) {
-              try {
-                localStorage.removeItem(key);
-              } catch (storageError) {
-                console.warn("ล้างแคชประวัติที่ไม่ถูกต้องไม่สำเร็จ", storageError);
-              }
-            }
-          }
-
-          if (cachedHistory) {
-            renderOrderHistory(cachedHistory);
-            return;
-          }
-
-          box.innerHTML = '<p class="text-center text-gray-400 py-6">กำลังโหลดประวัติ...</p>';
-          const res = await fetch(`${APPS_SCRIPT_URL}?action=getCustomerHistory&customerName=${encodeURIComponent(currentShop)}`);
+          const res = await fetch(
+            `${APPS_SCRIPT_URL}?action=getCustomerHistory&customerName=${encodeURIComponent(currentShop)}`,
+            { cache: "no-store" }
+          );
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
           const data = await res.json();
           if (data.success !== true || !Array.isArray(data.orders)) {
             throw new Error(data.error || data.message || "รูปแบบข้อมูลประวัติไม่ถูกต้อง");
-          }
-          try {
-            localStorage.setItem(key, JSON.stringify({ orders: data.orders, cachedAt: Date.now() }));
-          } catch (error) {
-            console.warn("บันทึกแคชประวัติการสั่งซื้อไม่สำเร็จ", error);
           }
           renderOrderHistory(data.orders);
         } catch (e) {

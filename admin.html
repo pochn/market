@@ -70,7 +70,7 @@
     <!-- 2. เมนูนำทางของโหมดหลังบ้าน -->
     <!-- ============================================== -->
     <div id="mgmtNavSection" class="hidden">
-      <nav class="grid grid-cols-4 gap-1 bg-gray-200/80 p-1 rounded-2xl font-bold text-xs shadow-inner">
+      <nav class="grid grid-cols-5 gap-1 bg-gray-200/80 p-1 rounded-2xl font-bold text-xs shadow-inner">
         <button data-tab="itemsList" class="tab-button py-2.5 rounded-xl bg-white text-emerald-800 shadow transition flex justify-center items-center gap-1">
           <span>🥬 คลังผักทั้งหมด</span>
         </button>
@@ -79,6 +79,9 @@
         </button>
         <button data-tab="shops" class="tab-button py-2.5 rounded-xl text-gray-500 transition flex justify-center items-center gap-1">
           <span>🏪 ร้านค้า & ลิงก์</span>
+        </button>
+        <button data-tab="shopHistory" class="tab-button py-2.5 rounded-xl text-gray-500 transition flex justify-center items-center gap-1">
+          <span>📜 ประวัติร้านค้า</span>
         </button>
         <button data-tab="settings" class="tab-button py-2.5 rounded-xl text-gray-500 transition flex justify-center items-center gap-1">
           <span>⏰ ตั้งค่า</span>
@@ -135,6 +138,23 @@
           <p class="text-xs font-semibold text-gray-500">จัดของครบแล้ว</p>
           <p class="text-2xl font-black text-blue-600 mt-0.5"><span id="statCompletedShops">0</span> <span class="text-xs font-normal text-gray-500">ร้าน</span></p>
         </div>
+      </div>
+    </section>
+
+    <section id="shopHistoryPanel" class="hidden space-y-3">
+      <div class="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm space-y-3">
+        <div>
+          <h2 class="font-extrabold text-gray-900">📜 ประวัติร้านค้า</h2>
+          <p class="text-xs text-gray-500 mt-1">ดูรายการสั่งซื้อและยอดค้างชำระสะสมของแต่ละร้าน</p>
+        </div>
+        <label class="block text-xs font-bold text-gray-700" for="customerHistoryShopSelect">เลือกร้านค้า</label>
+        <select id="customerHistoryShopSelect" class="w-full p-3 rounded-xl border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
+          <option value="">เลือกร้านค้า...</option>
+        </select>
+      </div>
+      <div id="customerHistorySummary" class="hidden"></div>
+      <div id="customerHistoryOrders" class="space-y-3">
+        <div class="text-center py-8 text-gray-400 bg-white rounded-2xl border">เลือกร้านค้าเพื่อดูประวัติ</div>
       </div>
     </section>
 

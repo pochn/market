@@ -10,6 +10,8 @@ function readMarketStorage(key, fallback) {
 
 window.MarketState = {
   currentOrders: [],
+  shopHistoryOrders: [],
+  selectedHistoryShop: "",
   allShops: [],
   vegetables: [],
   packedItems: readMarketStorage("market_packed_items", {}),
