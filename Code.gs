@@ -180,6 +180,14 @@ function buildOrderItems(rawItems, itemMap, savedPrices) {
   });
 }
 
+function getDriveFileIdFromImageUrl_(imageUrl) {
+  const value = String(imageUrl || "").trim();
+  const match = value.match(
+    /^https:\/\/(?:lh3\.googleusercontent\.com\/d\/|drive\.google\.com\/file\/d\/)([A-Za-z0-9_-]+)(?:[/?#].*)?$/i
+  );
+  return match ? match[1] : "";
+}
+
 // ==========================================
 // 1. ฟังก์ชัน doGet สำหรับดึงข้อมูล (GET Request)
 // ==========================================
@@ -820,13 +828,49 @@ function doPost(e) {
       if (itemId === undefined || itemId === null || String(itemId).trim() === "") {
         return responseJSON({ success: false, message: "Invalid item ID" });
       }
-      const rows = itemsSheet.getDataRange().getValues();
+      const lock = LockService.getScriptLock();
+      lock.waitLock(10000);
+      try {
+        const rows = itemsSheet.getDataRange().getValues();
+        for (let i = 1; i < rows.length; i++) {
+          if (String(rows[i][0]) !== String(itemId)) continue;
 
-      for (let i = 1; i < rows.length; i++) {
-        if (String(rows[i][0]) === String(itemId)) {
-          itemsSheet.deleteRow(i + 1);
-          return responseJSON({ success: true });
+          const imageUrl = rows[i][3];
+          const fileId = getDriveFileIdFromImageUrl_(imageUrl);
+          const isImageUsedElsewhere = fileId && rows.some((row, index) =>
+            index !== i && getDriveFileIdFromImageUrl_(row[3]) === fileId
+          );
+          let imageFile = null;
+
+          if (fileId && !isImageUsedElsewhere) {
+            imageFile = DriveApp.getFileById(fileId);
+            imageFile.setTrashed(true);
+          }
+
+          try {
+            itemsSheet.deleteRow(i + 1);
+          } catch (error) {
+            if (imageFile) {
+              try {
+                imageFile.setTrashed(false);
+              } catch (restoreError) {
+                throw new Error(
+                  `ลบแถวสินค้าไม่สำเร็จ และกู้คืนรูปใน Google Drive ไม่สำเร็จ: ${restoreError.message}`
+                );
+              }
+            }
+            throw error;
+          }
+
+          return responseJSON({
+            success: true,
+            imageDeleted: Boolean(imageFile),
+            imageShared: Boolean(isImageUsedElsewhere),
+            imageNotManaged: Boolean(imageUrl && !fileId)
+          });
         }
+      } finally {
+        lock.releaseLock();
       }
       return responseJSON({ success: false, message: "Item not found" });
     }

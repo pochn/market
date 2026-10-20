@@ -334,6 +334,15 @@
 
   async function initializeAdminAuth() {
     const form = document.getElementById("adminLoginForm");
+    const passwordInput = document.getElementById("adminPass");
+    const passwordToggle = document.getElementById("toggleAdminPassword");
+    passwordToggle?.addEventListener("click", () => {
+      const isVisible = passwordInput.type === "text";
+      passwordInput.type = isVisible ? "password" : "text";
+      passwordToggle.setAttribute("aria-pressed", String(!isVisible));
+      passwordToggle.setAttribute("aria-label", isVisible ? "แสดงรหัสผ่าน" : "ซ่อนรหัสผ่าน");
+      passwordToggle.textContent = isVisible ? "👁️ แสดง" : "🙈 ซ่อน";
+    });
     form?.addEventListener("submit", async event => {
       event.preventDefault();
       const submit = document.getElementById("loginSubmitBtn");
@@ -359,7 +368,11 @@
           } catch (storageError) {
             console.warn("บันทึกสถานะเข้าสู่ระบบแอดมินในอุปกรณ์ไม่สำเร็จ", storageError);
           }
-          document.getElementById("adminPass").value = "";
+          passwordInput.value = "";
+          passwordInput.type = "password";
+          passwordToggle?.setAttribute("aria-pressed", "false");
+          passwordToggle?.setAttribute("aria-label", "แสดงรหัสผ่าน");
+          if (passwordToggle) passwordToggle.textContent = "👁️ แสดง";
           await startAdminWorkspace();
           Swal.fire({
             toast: true,
@@ -1611,13 +1624,21 @@
   }
 
   async function deleteVeg(id, name) {
-    if (!confirm(`ยืนยันการลบ "${name}" ออกจากคลังผักหรือไม่?`)) return;
+    if (!confirm(`ยืนยันการลบ "${name}" ออกจากคลังผักและลบรูปที่เกี่ยวข้องจาก Google Drive หรือไม่?`)) return;
 
     try {
-      await postAction({ action: "deleteItem", itemId: id });
+      const result = await postAction({ action: "deleteItem", itemId: id });
+      if (result.success !== true) throw new Error(result.message || "Apps Script ไม่ยืนยันการลบสินค้า");
       state.vegetables = state.vegetables.filter(v => String(v.id) !== String(id));
       renderVegetablesList();
-      alert(`✓ ลบ "${name}" ออกจากระบบแล้ว`);
+      const imageMessage = result.imageShared
+        ? "\nรูปภาพยังอยู่ใน Google Drive เพราะมีสินค้าอื่นใช้งานร่วมกัน"
+        : result.imageNotManaged
+          ? "\nไม่พบรูปแบบ URL ของ Google Drive จึงไม่ได้ลบไฟล์รูป"
+          : result.imageDeleted
+            ? "\nลบรูปภาพจาก Google Drive แล้ว"
+            : "";
+      alert(`✓ ลบ "${name}" ออกจากระบบแล้ว${imageMessage}`);
     } catch (e) {
       alert("ลบไม่สำเร็จ: " + e.message);
     }
