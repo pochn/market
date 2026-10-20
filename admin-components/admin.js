@@ -315,6 +315,18 @@
     const order = state.currentOrders.find(item => String(item.orderId) === String(orderId));
     const card = button.closest("[data-order-card]");
     if (!order || !card) return;
+    const confirmResult = await Swal.fire({
+      title: 'ยืนยันบันทึก & ส่งใบส่งของ?',
+      html: `ต้องการบันทึกราคาและส่งยอดเงินให้ร้าน <b>${escapeHtml(order.customerName)}</b> ใช่หรือไม่?<br><span class="text-xs text-gray-500">(เมื่อส่งแล้ว ลูกค้าจะเห็นใบส่งของและไม่สามารถแก้ไข/ยกเลิกออเดอร์ได้)</span>`,
+      icon: 'question',
+      showCancelButton: true,
+      confirmButtonText: 'ใช่, บันทึกและส่ง',
+      cancelButtonText: 'ตรวจสอบก่อน',
+      confirmButtonColor: '#059669',
+      cancelButtonColor: '#6b7280'
+    });
+    if (!confirmResult.isConfirmed) return;
+
     const inputs = [...card.querySelectorAll("[data-unit-price]")];
     const items = inputs.map(input => {
       const item = order.items[Number(input.dataset.index)];
@@ -346,9 +358,20 @@
         console.warn("บันทึกราคาต่อหน่วยไว้ในเครื่องไม่สำเร็จ", error);
       }
       renderDashboard();
-      alert(`บันทึกและส่งใบส่งของให้ ${order.customerName} แล้ว · ยอดรวม ${order.totalAmount.toLocaleString("th-TH", { maximumFractionDigits: 2 })} บาท`);
+      await Swal.fire({
+        icon: 'success',
+        title: 'บันทึกและส่งใบส่งของสำเร็จ!',
+        text: `ส่งยอดให้ ${order.customerName} แล้ว · ยอดรวม ${order.totalAmount.toLocaleString("th-TH", { maximumFractionDigits: 2 })} บาท`,
+        confirmButtonText: 'ตกลง',
+        confirmButtonColor: '#059669'
+      });
     } catch (error) {
-      alert(`บันทึกราคาหรือส่งใบส่งของไม่สำเร็จ: ${error.message}`);
+      await Swal.fire({
+        icon: 'error',
+        title: 'บันทึกหรือส่งใบส่งของไม่สำเร็จ',
+        text: error.message,
+        confirmButtonColor: '#dc2626'
+      });
       console.error("บันทึกราคาออเดอร์ไม่สำเร็จ", error);
     } finally {
       button.disabled = false;
@@ -375,20 +398,90 @@
     }
   }
 
-  async function togglePaymentStatus(orderId, button) {
+  async function togglePaymentStatusWithConfirm(orderId, currentStatus, shopName, button) {
     const order = state.currentOrders.find(item => String(item.orderId) === String(orderId));
     if (!order) return;
-    const paymentStatus = order.paymentStatus === "ชำระแล้ว" ? "ค้างชำระ" : "ชำระแล้ว";
-    button.disabled = true;
+    const card = button && button.closest("[data-order-card]");
+    const nextStatus = currentStatus === "ชำระแล้ว" ? "ค้างชำระ" : "ชำระแล้ว";
+    const isPaying = nextStatus === "ชำระแล้ว";
+    const confirmation = await Swal.fire({
+      title: 'ยืนยันเปลี่ยนสถานะ?',
+      html: `ต้องการเปลี่ยนสถานะร้าน <b>${escapeHtml(shopName)}</b><br>เป็น <b class="${isPaying ? 'text-emerald-600' : 'text-amber-600'}">"${nextStatus}"</b> ใช่หรือไม่?`,
+      icon: 'question',
+      showCancelButton: true,
+      confirmButtonText: 'ใช่, เปลี่ยนสถานะ',
+      cancelButtonText: 'ยกเลิก',
+      confirmButtonColor: isPaying ? '#059669' : '#d97706',
+      cancelButtonColor: '#6b7280'
+    });
+    if (!confirmation.isConfirmed) return;
+
+    if (button) button.disabled = true;
+    let pricingSaved = false;
     try {
-      const result = await postAction({ action: "updatePaymentStatus", orderId, paymentStatus });
-      order.paymentStatus = result.paymentStatus;
+      let pricedItems = null;
+      if (isPaying) {
+        if (!card) throw new Error("ไม่พบการ์ดออเดอร์สำหรับอ่านราคาสินค้า");
+        pricedItems = (order.items || []).map((item, index) => {
+          const input = card.querySelector(`[data-unit-price][data-index="${index}"]`);
+          const unitPrice = input
+            ? (input.value === "" ? NaN : Number(input.value))
+            : Number(item.unitPrice);
+          return { ...item, unitPrice };
+        });
+        if (pricedItems.some(item => !Number.isFinite(item.unitPrice) || item.unitPrice < 0)) {
+          throw new Error("กรุณากรอกราคาต่อหน่วยให้ครบทุกสินค้า (ราคาต้องไม่ติดลบ) ก่อนเปลี่ยนเป็นชำระแล้ว");
+        }
+      }
+
+      Swal.fire({
+        title: isPaying ? 'กำลังบันทึกใบส่งของและสถานะ...' : 'กำลังอัปเดตสถานะ...',
+        allowOutsideClick: false,
+        didOpen: () => {
+          Swal.showLoading();
+        }
+      });
+      if (isPaying) {
+        const pricingResult = await postAction({
+          action: "updateOrderPricing",
+          orderId,
+          items: pricedItems.map(({ name, unit, qty, unitPrice }) => ({ name, unit, qty, unitPrice }))
+        });
+        pricedItems.forEach((item, index) => {
+          order.items[index].unitPrice = item.unitPrice;
+          state.customPrices[priceStorageKey(item)] = item.unitPrice;
+        });
+        order.totalAmount = Number(pricingResult.totalAmount) || 0;
+        order.hasPricing = true;
+        pricingSaved = true;
+        try {
+          localStorage.setItem("market_custom_prices", JSON.stringify(state.customPrices));
+        } catch (error) {
+          console.warn("บันทึกราคาต่อหน่วยไว้ในเครื่องไม่สำเร็จ", error);
+        }
+      }
+      await postAction({ action: "updatePaymentStatus", orderId, paymentStatus: nextStatus });
+      order.paymentStatus = nextStatus;
       renderDashboard();
+      await Swal.fire({
+        icon: 'success',
+        title: isPaying ? 'บันทึกใบส่งของและอัปเดตสถานะเรียบร้อย!' : 'อัปเดตเรียบร้อย!',
+        text: isPaying
+          ? `เปลี่ยนเป็น "${nextStatus}" แล้ว · ยอดรวม ${order.totalAmount.toLocaleString("th-TH", { maximumFractionDigits: 2 })} บาท`
+          : `เปลี่ยนเป็น "${nextStatus}" แล้ว`,
+        timer: 1500,
+        showConfirmButton: false
+      });
     } catch (error) {
-      alert(`เปลี่ยนสถานะชำระเงินไม่สำเร็จ: ${error.message}`);
+      if (pricingSaved) renderDashboard();
+      await Swal.fire({
+        icon: 'error',
+        title: pricingSaved ? 'บันทึกใบส่งของแล้ว แต่เปลี่ยนสถานะไม่สำเร็จ' : 'เกิดข้อผิดพลาด',
+        text: error.message
+      });
       console.error("เปลี่ยนสถานะชำระเงินไม่สำเร็จ", error);
     } finally {
-      button.disabled = false;
+      if (button) button.disabled = false;
     }
   }
 
@@ -975,7 +1068,17 @@
         await adminCancelOrder(control.dataset.orderId, control.dataset.shopName);
         break;
       case "toggle-payment":
-        await togglePaymentStatus(control.dataset.order, control);
+        {
+          const order = state.currentOrders.find(item => String(item.orderId) === String(control.dataset.order));
+          if (order) {
+            await togglePaymentStatusWithConfirm(
+              control.dataset.order,
+              order.paymentStatus,
+              order.customerName,
+              control
+            );
+          }
+        }
         break;
       case "share-order-invoice":
         await shareOrderInvoice(control.dataset.order, control);

@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>สั่งผักสดตลาดเช้า - แม่ทิพย์</title>
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>
@@ -19,9 +20,16 @@
 
   <!-- Header -->
   <header class="bg-emerald-700 text-white p-4 shadow-md sticky top-0 z-40">
-    <div class="max-w-md mx-auto flex justify-between items-center">
-      <div>
-        <h1 class="text-xl font-extrabold tracking-tight">🥬 ตลาดสดแม่ทิพย์</h1>
+    <div class="max-w-md mx-auto flex flex-wrap justify-between items-center gap-2">
+      <div class="min-w-0 flex-1">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <h1 class="text-xl font-extrabold tracking-tight">🥬 ตลาดสดแม่ทิพย์</h1>
+          <div class="flex items-center gap-1 bg-emerald-800/80 p-1 rounded-xl border border-emerald-500">
+            <button onclick="changeFontSize('small')" class="px-2 py-0.5 rounded text-xs font-bold text-white hover:bg-emerald-700" title="ตัวหนังสือปกติ">A</button>
+            <button onclick="changeFontSize('medium')" class="px-2 py-0.5 rounded text-sm font-bold text-white hover:bg-emerald-700" title="ตัวหนังสือใหญ่">A+</button>
+            <button onclick="changeFontSize('large')" class="px-2 py-0.5 rounded text-base font-bold text-amber-300 hover:bg-emerald-700" title="ตัวหนังสือใหญ่พิเศษ">A++</button>
+          </div>
+        </div>
         <p class="text-xs text-emerald-100" id="displayMarketDate">รอบตลาดเช้า: กำลังโหลด...</p>
       </div>
       <button onclick="toggleHistoryModal(true)" class="bg-emerald-800 hover:bg-emerald-900 text-xs px-3 py-2 rounded-xl border border-emerald-500 font-semibold shadow-sm">
@@ -39,6 +47,10 @@
         <h2 id="currentShopDisplay" class="text-xl font-extrabold text-gray-800 mt-0.5">กำลังตรวจสอบร้านค้า...</h2>
       </div>
     </section>
+
+    <button onclick="loadLastOrderForShop(true)" class="w-full py-3 bg-emerald-50 hover:bg-emerald-100 active:bg-emerald-200 border-2 border-emerald-300 text-emerald-800 rounded-2xl font-extrabold text-sm flex items-center justify-center gap-2 shadow-sm transition">
+      <span>🔄 แตะเพื่ออัปเดตข้อมูล / ดูยอดเงินล่าสุด</span>
+    </button>
 
     <section id="currentOrderCard" class="hidden bg-white p-4 rounded-2xl shadow-sm border border-amber-200 space-y-3"></section>
 
@@ -164,6 +176,13 @@
       return `history_cache_${currentShop}`;
     }
 
+    function changeFontSize(size) {
+      const fontSizes = { small: "100%", medium: "115%", large: "130%" };
+      if (!Object.prototype.hasOwnProperty.call(fontSizes, size)) return;
+      document.documentElement.style.fontSize = fontSizes[size];
+      localStorage.setItem("user_font_size", size);
+    }
+
     function renderOrderHistory(orders) {
       const box = document.getElementById('historyContent');
       if (!Array.isArray(orders) || orders.length === 0) {
@@ -262,23 +281,36 @@
       });
     }
 
+    function customerOrderHasInvoice(order) {
+      return Boolean(order && (
+        order.hasPricing === true ||
+        Number(order.totalAmount) > 0 ||
+        (Array.isArray(order.items) && order.items.some(item =>
+          item.unitPrice !== undefined && item.unitPrice !== null && item.unitPrice !== ""))
+      ));
+    }
+
     function customerOrderIsLocked(order) {
       const status = String(order && order.status || "").trim();
       if (!order || status === "จัดแล้ว" || status === "ยกเลิกแล้ว") return true;
+      if (customerOrderHasInvoice(order)) return true;
       const cutoff = new Date(`${order.orderDate}T${cutoffTime}:00+07:00`);
       return Number.isNaN(cutoff.getTime()) || Date.now() >= cutoff.getTime();
     }
 
     function renderCurrentOrderCard() {
       const card = document.getElementById("currentOrderCard");
-      if (!currentOrder) {
+      if (!currentOrder ||
+          currentOrder.paymentStatus === "ชำระแล้ว" ||
+          String(currentOrder.status || "").trim() === "ยกเลิกแล้ว") {
         card.classList.add("hidden");
         card.innerHTML = "";
         return;
       }
 
       const locked = customerOrderIsLocked(currentOrder);
-      const hasPricing = currentOrder.hasPricing === true;
+      const hasInvoice = customerOrderHasInvoice(currentOrder);
+      const hasPricing = hasInvoice;
       const itemSummary = (Array.isArray(currentOrder.items) ? currentOrder.items : []).map(item => {
         const quantity = Number(item.qty) || 0;
         const unitPrice = Number(item.unitPrice) || 0;
@@ -289,9 +321,11 @@
         </li>`;
       }
       ).join("");
-      const lockNotice = locked
-        ? '<p class="text-xs font-bold text-red-700">หมดเวลาแก้ไข/ยกเลิกสำหรับรอบนี้แล้ว กรุณาโทรติดต่อแม่ทิพย์โดยตรง</p>'
-        : "";
+      const lockNotice = hasInvoice
+        ? '<p class="text-xs font-bold text-red-700">📄 แม่ทิพย์ออกใบส่งของแล้ว ไม่สามารถแก้ไขหรือยกเลิกได้</p>'
+        : locked
+          ? '<p class="text-xs font-bold text-red-700">หมดเวลาแก้ไข/ยกเลิกสำหรับรอบนี้แล้ว กรุณาโทรติดต่อแม่ทิพย์โดยตรง</p>'
+          : "";
       card.innerHTML = `
         <div class="flex items-start justify-between gap-2">
           <div>
@@ -316,6 +350,8 @@
     }
 
     async function init() {
+      const savedFontSize = localStorage.getItem("user_font_size");
+      if (savedFontSize) changeFontSize(savedFontSize);
       calculateMarketDate();
       initShopIdentity();
       initializeDynamicItemActions();
@@ -349,14 +385,34 @@
     }
 
     // โหลดประวัติครั้งล่าสุดของร้านนี้มาเลือกไว้ให้อัตโนมัติ
-    async function loadLastOrderForShop() {
-      if (!currentShop) return;
+    async function loadLastOrderForShop(forceRefresh = false) {
+      if (!currentShop) {
+        if (forceRefresh) {
+          await Swal.fire({
+            icon: 'error',
+            title: 'ไม่พบข้อมูลร้านค้า',
+            text: 'กรุณาเปิดลิงก์สั่งซื้อของร้านที่ได้รับจากแม่ทิพย์',
+            confirmButtonColor: '#dc2626'
+          });
+        }
+        return;
+      }
+      if (forceRefresh) {
+        try {
+          localStorage.removeItem(historyCacheKey());
+        } catch (error) {
+          console.warn("ล้างแคชประวัติการสั่งซื้อไม่สำเร็จ", error);
+        }
+      }
       selectedVegNames.clear();
       cartItems = {};
       currentOrder = null;
       updateBadgesAndTotals();
       try {
-        const res = await fetch(`${APPS_SCRIPT_URL}?action=getCustomerHistory&customerName=${encodeURIComponent(currentShop)}`);
+        const res = await fetch(
+          `${APPS_SCRIPT_URL}?action=getCustomerHistory&customerName=${encodeURIComponent(currentShop)}`,
+          forceRefresh ? { cache: "no-store" } : {}
+        );
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
         if (data.success !== true || !Array.isArray(data.orders)) {
@@ -364,6 +420,12 @@
         }
         currentOrder = data.orders.find(order =>
           order.orderDate === marketDate && String(order.status || "").trim() !== "ยกเลิกแล้ว") || null;
+        if (editingOrderId && currentOrder && customerOrderIsLocked(currentOrder)) {
+          editingOrderId = "";
+          document.getElementById("editingOrderNotice").classList.add("hidden");
+          document.getElementById("btnSubmit").innerText = "✓ ยืนยันสั่งของตามนี้";
+          switchTab(1);
+        }
         const templateOrder = currentOrder || data.orders.find(order => String(order.status || "").trim() !== "ยกเลิกแล้ว");
         if (templateOrder) {
           (Array.isArray(templateOrder.items) ? templateOrder.items : []).forEach(it => {
@@ -382,10 +444,29 @@
         if (!currentOrder && selectedVegNames.size > 0) {
           switchTab(2);
         }
+        if (forceRefresh) {
+          await Swal.fire({
+            toast: true,
+            position: 'top',
+            icon: 'success',
+            title: 'อัปเดตข้อมูลล่าสุดแล้ว',
+            showConfirmButton: false,
+            timer: 1800,
+            timerProgressBar: true
+          });
+        }
       } catch (err) {
         currentOrder = null;
         renderCurrentOrderCard();
         console.error("โหลดประวัติออเดอร์ล่าสุดไม่สำเร็จ", err);
+        if (forceRefresh) {
+          await Swal.fire({
+            icon: 'error',
+            title: 'อัปเดตข้อมูลไม่สำเร็จ',
+            text: err.message || 'กรุณาลองใหม่อีกครั้ง',
+            confirmButtonColor: '#dc2626'
+          });
+        }
       }
     }
 
@@ -651,10 +732,6 @@
         alert("ไม่พบข้อมูลร้านค้า กรุณาเปิดลิงก์สั่งซื้อของร้านที่ได้รับจากแม่ทิพย์");
         return;
       }
-      if (currentOrder && !editingOrderId) {
-        alert("มีออเดอร์สำหรับรอบนี้แล้ว กรุณากด “แก้ไขรายการ” ที่การ์ดออเดอร์ก่อนอัปเดต");
-        return;
-      }
       if (editingOrderId && (!currentOrder || customerOrderIsLocked(currentOrder))) {
         alert("หมดเวลาแก้ไข/ยกเลิกสำหรับรอบนี้แล้ว กรุณาโทรติดต่อแม่ทิพย์โดยตรง");
         renderCurrentOrderCard();
@@ -676,9 +753,54 @@
 
       const btn = document.getElementById('btnSubmit');
       btn.disabled = true;
-      btn.innerText = editingOrderId ? "กำลังบันทึกการแก้ไข..." : "กำลังส่งออเดอร์ให้แม่ทิพย์...";
+      btn.innerText = editingOrderId ? "กำลังบันทึกการแก้ไข..." : "กำลังตรวจสอบรายการ...";
 
       try {
+        if (!editingOrderId) {
+          const historyResponse = await fetch(
+            `${APPS_SCRIPT_URL}?action=getCustomerHistory&customerName=${encodeURIComponent(currentShop)}`,
+            { cache: "no-store" }
+          );
+          if (!historyResponse.ok) throw new Error(`HTTP ${historyResponse.status}`);
+          const historyData = await historyResponse.json();
+          if (historyData.success !== true || !Array.isArray(historyData.orders)) {
+            throw new Error(historyData.error || historyData.message || "รูปแบบข้อมูลประวัติไม่ถูกต้อง");
+          }
+
+          const existingOrderItems = historyData.orders
+            .filter(order => order.orderDate === marketDate &&
+              String(order.status || "").trim() !== "ยกเลิกแล้ว")
+            .flatMap(order => Array.isArray(order.items) ? order.items : []);
+          const duplicateNames = [...new Set(items
+            .filter(newItem => existingOrderItems.some(oldItem => oldItem.name === newItem.name))
+            .map(item => item.name))];
+
+          if (duplicateNames.length > 0) {
+            const confirmDuplicate = await Swal.fire({
+              icon: 'warning',
+              title: 'มีรายการที่เคยสั่งไปแล้วในรอบนี้!',
+              html: `คุณได้สั่งรายการดังต่อไปนี้ไปแล้ว:<br><b class="text-emerald-700">${duplicateNames.map(escapeHtml).join(', ')}</b><br><br>ต้องการยืนยัน <b>"สั่งเพิ่มอีกบิล"</b> ใช่หรือไม่?`,
+              showCancelButton: true,
+              confirmButtonText: 'ยืนยันสั่งเพิ่ม',
+              cancelButtonText: 'ยกเลิก / ไม่สั่งซ้ำ',
+              confirmButtonColor: '#059669',
+              cancelButtonColor: '#6b7280'
+            });
+
+            if (!confirmDuplicate.isConfirmed) return;
+          }
+        }
+
+        btn.innerText = editingOrderId ? "กำลังบันทึกการแก้ไข..." : "กำลังส่งออเดอร์ให้แม่ทิพย์...";
+        Swal.fire({
+          title: 'กำลังส่งออเดอร์...',
+          text: 'กรุณารอสักครู่ ระบบกำลังบันทึกข้อมูลให้แม่ทิพย์',
+          allowOutsideClick: false,
+          didOpen: () => {
+            Swal.showLoading();
+          }
+        });
+
         const payload = {
           action: editingOrderId ? "updateCustomerOrder" : "createOrder",
           orderDate: marketDate,
@@ -704,16 +826,25 @@
           const wasEditing = Boolean(editingOrderId);
           editingOrderId = "";
           document.getElementById("editingOrderNotice").classList.add("hidden");
-          alert(wasEditing
-            ? `✅ อัปเดตรายการเรียบร้อยแล้ว!\nร้าน: ${currentShop}`
-            : `✅ สั่งของเรียบร้อยแล้ว!\nร้าน: ${currentShop}\nรอบตลาดเช้าพรุ่งนี้`);
+          await Swal.fire({
+            icon: 'success',
+            title: wasEditing ? 'อัปเดตออเดอร์สำเร็จ!' : 'ส่งออเดอร์สำเร็จ!',
+            html: `ร้าน: <b>${escapeHtml(currentShop)}</b><br>รอบตลาดเช้า: ${escapeHtml(marketDate)}`,
+            confirmButtonText: 'ตกลง',
+            confirmButtonColor: '#059669'
+          });
           await loadLastOrderForShop();
           switchTab(1);
         } else {
           throw new Error(result.error || result.message || "ไม่สามารถส่งคำสั่งซื้อได้");
         }
       } catch (e) {
-        alert("ส่งข้อมูลไม่สำเร็จ: " + e.message);
+        await Swal.fire({
+          icon: 'error',
+          title: 'ส่งไม่สำเร็จ',
+          text: e.message || 'กรุณาลองใหม่อีกครั้ง หรือโทรติดต่อแม่ทิพย์',
+          confirmButtonColor: '#dc2626'
+        });
         if (editingOrderId) {
           await loadLastOrderForShop();
           if (!currentOrder || customerOrderIsLocked(currentOrder)) {
