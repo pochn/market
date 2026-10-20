@@ -8,7 +8,7 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>
-    html { font-size: 115%; }
+    html { font-size: 100%; }
     body { font-family: 'Prompt', sans-serif; -webkit-tap-highlight-color: transparent; }
   </style>
 </head>
@@ -195,10 +195,55 @@
       })[char]);
     }
 
+    const textSizeScales = { xsmall: 0.85, small: 1, medium: 1.15, large: 1.3, xlarge: 1.45 };
+    let activeTextScale = 1;
+    let textSizeObserver;
+
+    function applyCustomerTextScale(elements, captureInitial = false) {
+      const allElements = new Set();
+      elements.forEach(element => {
+        if (!(element instanceof HTMLElement)) return;
+        allElements.add(element);
+        element.querySelectorAll("*").forEach(child => {
+          if (child instanceof HTMLElement) allElements.add(child);
+        });
+      });
+
+      allElements.forEach(element => {
+        if (element.dataset.baseFontSize) return;
+        if (captureInitial) {
+          element.dataset.baseFontSize = getComputedStyle(element).fontSize;
+          return;
+        }
+        const computedSize = getComputedStyle(element).fontSize;
+        const parent = element.parentElement;
+        const parentSize = parent ? getComputedStyle(parent).fontSize : "";
+        if (parent && Math.abs(parseFloat(computedSize) - parseFloat(parentSize)) < 0.01) {
+          element.dataset.baseFontSize = parent.dataset.baseFontSize ||
+            `${parseFloat(parentSize) / activeTextScale}px`;
+        } else {
+          element.dataset.baseFontSize = computedSize;
+        }
+      });
+
+      allElements.forEach(element => {
+        const baseSize = parseFloat(element.dataset.baseFontSize);
+        if (Number.isFinite(baseSize)) element.style.fontSize = `${baseSize * activeTextScale}px`;
+      });
+    }
+
     function changeFontSize(size) {
-      const fontSizes = { xsmall: "85%", small: "100%", medium: "115%", large: "130%", xlarge: "145%" };
-      if (!Object.prototype.hasOwnProperty.call(fontSizes, size)) return;
-      document.documentElement.style.fontSize = fontSizes[size];
+      if (!Object.prototype.hasOwnProperty.call(textSizeScales, size)) return;
+      if (!textSizeObserver && document.body) {
+        textSizeObserver = new MutationObserver(records => {
+          const addedElements = records.flatMap(record => [...record.addedNodes])
+            .filter(node => node instanceof HTMLElement);
+          if (addedElements.length) applyCustomerTextScale(addedElements);
+        });
+        textSizeObserver.observe(document.body, { childList: true, subtree: true });
+      }
+      activeTextScale = textSizeScales[size];
+      applyCustomerTextScale([document.body], true);
       document.querySelectorAll(".customer-font-size-button").forEach(button => {
         const isActive = button.dataset.fontSize === size;
         button.setAttribute("aria-pressed", String(isActive));

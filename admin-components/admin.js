@@ -25,11 +25,55 @@
     }
   }
 
-  const adminFontSizes = { xsmall: "85%", small: "100%", medium: "115%", large: "130%", xlarge: "145%" };
+  const adminFontSizes = { xsmall: 0.85, small: 1, medium: 1.15, large: 1.3, xlarge: 1.45 };
+  let activeAdminTextScale = 1;
+  let adminTextSizeObserver;
+
+  function applyAdminTextScale(elements, captureInitial = false) {
+    const allElements = new Set();
+    elements.forEach(element => {
+      if (!(element instanceof HTMLElement)) return;
+      allElements.add(element);
+      element.querySelectorAll("*").forEach(child => {
+        if (child instanceof HTMLElement) allElements.add(child);
+      });
+    });
+
+    allElements.forEach(element => {
+      if (element.dataset.baseFontSize) return;
+      if (captureInitial) {
+        element.dataset.baseFontSize = getComputedStyle(element).fontSize;
+        return;
+      }
+      const computedSize = getComputedStyle(element).fontSize;
+      const parent = element.parentElement;
+      const parentSize = parent ? getComputedStyle(parent).fontSize : "";
+      if (parent && Math.abs(parseFloat(computedSize) - parseFloat(parentSize)) < 0.01) {
+        element.dataset.baseFontSize = parent.dataset.baseFontSize ||
+          `${parseFloat(parentSize) / activeAdminTextScale}px`;
+      } else {
+        element.dataset.baseFontSize = computedSize;
+      }
+    });
+
+    allElements.forEach(element => {
+      const baseSize = parseFloat(element.dataset.baseFontSize);
+      if (Number.isFinite(baseSize)) element.style.fontSize = `${baseSize * activeAdminTextScale}px`;
+    });
+  }
 
   function setAdminFontSize(size) {
     if (!Object.prototype.hasOwnProperty.call(adminFontSizes, size)) return;
-    document.documentElement.style.fontSize = adminFontSizes[size];
+    if (!adminTextSizeObserver && document.body) {
+      adminTextSizeObserver = new MutationObserver(records => {
+        const addedElements = records.flatMap(record => [...record.addedNodes])
+          .filter(node => node instanceof HTMLElement);
+        if (addedElements.length) applyAdminTextScale(addedElements);
+      });
+      adminTextSizeObserver.observe(document.body, { childList: true, subtree: true });
+    }
+    activeAdminTextScale = adminFontSizes[size];
+    applyAdminTextScale([document.body], true);
     document.querySelectorAll(".admin-font-size-button").forEach(button => {
       const isActive = button.dataset.fontSize === size;
       button.setAttribute("aria-pressed", String(isActive));
