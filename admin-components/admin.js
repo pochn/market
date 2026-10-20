@@ -100,6 +100,35 @@
     setAdminFontSize(size);
   }
 
+  function setAdminCardSize(size) {
+    if (!["small", "medium", "large"].includes(size)) return;
+    document.body.dataset.cardSize = size;
+    document.querySelectorAll(".admin-card-size-button").forEach(button => {
+      const isActive = button.dataset.cardSize === size;
+      button.setAttribute("aria-pressed", String(isActive));
+      button.classList.toggle("bg-white", isActive);
+      button.classList.toggle("text-emerald-900", isActive);
+      button.classList.toggle("shadow", isActive);
+      button.classList.toggle("text-emerald-100", !isActive);
+    });
+    try {
+      localStorage.setItem("admin_card_size", size);
+    } catch (error) {
+      console.warn("บันทึกขนาดการ์ดแอดมินไม่สำเร็จ", error);
+    }
+  }
+
+  function initializeAdminCardSize() {
+    let size = "medium";
+    try {
+      const savedSize = localStorage.getItem("admin_card_size");
+      if (["small", "medium", "large"].includes(savedSize)) size = savedSize;
+    } catch (error) {
+      console.warn("อ่านขนาดการ์ดแอดมินที่บันทึกไว้ไม่สำเร็จ", error);
+    }
+    setAdminCardSize(size);
+  }
+
   const panelByTab = {
     market: "marketPanel",
     packing: "packingPanel",
@@ -1703,6 +1732,9 @@
       case "set-admin-font-size":
         setAdminFontSize(control.dataset.fontSize);
         break;
+      case "set-admin-card-size":
+        setAdminCardSize(control.dataset.cardSize);
+        break;
       case "quick-share-line":
         await shareOrderInvoice(control.dataset.orderId, control);
         break;
@@ -1989,6 +2021,7 @@
   async function initialize() {
     try {
       initializeAdminFontSize();
+      initializeAdminCardSize();
       initializeDate();
       await loadComponents();
       initializeEvents();

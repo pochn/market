@@ -10,6 +10,18 @@
   <style>
     html { font-size: 100%; }
     body { font-family: 'Prompt', sans-serif; -webkit-tap-highlight-color: transparent; }
+    body[data-card-size="small"] #vegGrid [data-action="toggle-select-veg"],
+    body[data-card-size="small"] #selectedVegList > div,
+    body[data-card-size="small"] #currentOrderCard { padding: 0.5rem !important; }
+    body[data-card-size="medium"] #vegGrid [data-action="toggle-select-veg"],
+    body[data-card-size="medium"] #selectedVegList > div,
+    body[data-card-size="medium"] #currentOrderCard { padding: 0.75rem !important; }
+    body[data-card-size="large"] #vegGrid [data-action="toggle-select-veg"],
+    body[data-card-size="large"] #selectedVegList > div,
+    body[data-card-size="large"] #currentOrderCard { padding: 1.25rem !important; }
+    body[data-card-size="small"] #vegGrid [data-action="toggle-select-veg"] > div:nth-child(2) { width: 4rem !important; height: 4rem !important; }
+    body[data-card-size="medium"] #vegGrid [data-action="toggle-select-veg"] > div:nth-child(2) { width: 5rem !important; height: 5rem !important; }
+    body[data-card-size="large"] #vegGrid [data-action="toggle-select-veg"] > div:nth-child(2) { width: 6rem !important; height: 6rem !important; }
   </style>
 </head>
 <body class="bg-gray-100 min-h-screen pb-28 text-gray-800">
@@ -22,7 +34,7 @@
   <!-- Header -->
   <header class="bg-emerald-700 text-white px-4 py-2.5 shadow-md sticky top-0 z-40">
     <div class="max-w-md mx-auto space-y-1.5">
-      <div class="flex justify-between items-center">
+      <div class="flex flex-wrap justify-between items-center gap-2">
         <h1 class="text-lg font-black tracking-tight">🥬 ตลาดสดแม่ทิพย์</h1>
         <div class="flex items-center gap-0.5 bg-emerald-800/90 p-0.5 rounded-lg border border-emerald-500" role="group" aria-label="ปรับขนาดตัวอักษร">
           <button onclick="changeFontSize('xsmall')" data-font-size="xsmall" class="customer-font-size-button px-1.5 py-0.5 rounded text-[10px] font-bold text-white hover:bg-emerald-700 whitespace-nowrap" title="ตัวหนังสือเล็กที่สุด" aria-label="ตัวหนังสือเล็กที่สุด A-" aria-pressed="false">A-</button>
@@ -30,6 +42,12 @@
           <button onclick="changeFontSize('medium')" data-font-size="medium" class="customer-font-size-button px-1.5 py-0.5 rounded text-sm font-bold bg-white text-emerald-900 shadow whitespace-nowrap" title="ตัวหนังสือใหญ่" aria-label="ตัวหนังสือใหญ่ A+" aria-pressed="true">A+</button>
           <button onclick="changeFontSize('large')" data-font-size="large" class="customer-font-size-button px-1.5 py-0.5 rounded text-sm font-bold text-white hover:bg-emerald-700 whitespace-nowrap" title="ตัวหนังสือใหญ่พิเศษ" aria-label="ตัวหนังสือใหญ่พิเศษ A++" aria-pressed="false">A++</button>
           <button onclick="changeFontSize('xlarge')" data-font-size="xlarge" class="customer-font-size-button px-1.5 py-0.5 rounded text-sm font-bold text-white hover:bg-emerald-700 whitespace-nowrap" title="ตัวหนังสือใหญ่ที่สุด" aria-label="ตัวหนังสือใหญ่ที่สุด A+++" aria-pressed="false">A+++</button>
+        </div>
+        <div class="flex items-center gap-0.5 bg-emerald-800/90 p-0.5 rounded-lg border border-emerald-500" role="group" aria-label="ปรับขนาดการ์ด">
+          <span class="text-[10px] text-emerald-100 px-1">การ์ด</span>
+          <button type="button" onclick="changeCardSize('small')" data-card-size="small" class="customer-card-size-button px-1.5 py-0.5 rounded text-xs font-bold text-white hover:bg-emerald-700" aria-label="การ์ดเล็ก">เล็ก</button>
+          <button type="button" onclick="changeCardSize('medium')" data-card-size="medium" class="customer-card-size-button px-1.5 py-0.5 rounded text-xs font-bold bg-white text-emerald-900 shadow" aria-label="การ์ดขนาดปกติ">ปกติ</button>
+          <button type="button" onclick="changeCardSize('large')" data-card-size="large" class="customer-card-size-button px-1.5 py-0.5 rounded text-xs font-bold text-white hover:bg-emerald-700" aria-label="การ์ดใหญ่">ใหญ่</button>
         </div>
       </div>
       <div class="flex justify-between items-center text-xs">
@@ -256,6 +274,24 @@
         localStorage.setItem("user_font_size", size);
       } catch (error) {
         console.warn("บันทึกขนาดตัวอักษรไม่สำเร็จ", error);
+      }
+    }
+
+    function changeCardSize(size) {
+      if (!["small", "medium", "large"].includes(size)) return;
+      document.body.dataset.cardSize = size;
+      document.querySelectorAll(".customer-card-size-button").forEach(button => {
+        const isActive = button.dataset.cardSize === size;
+        button.setAttribute("aria-pressed", String(isActive));
+        button.classList.toggle("bg-white", isActive);
+        button.classList.toggle("text-emerald-900", isActive);
+        button.classList.toggle("shadow", isActive);
+        button.classList.toggle("text-white", !isActive);
+      });
+      try {
+        localStorage.setItem("user_card_size", size);
+      } catch (error) {
+        console.warn("บันทึกขนาดการ์ดไม่สำเร็จ", error);
       }
     }
 
@@ -490,6 +526,14 @@
         console.warn("อ่านขนาดตัวอักษรที่บันทึกไว้ไม่สำเร็จ", error);
       }
       changeFontSize(savedFontSize);
+      let savedCardSize = "medium";
+      try {
+        const storedCardSize = localStorage.getItem("user_card_size");
+        if (["small", "medium", "large"].includes(storedCardSize)) savedCardSize = storedCardSize;
+      } catch (error) {
+        console.warn("อ่านขนาดการ์ดที่บันทึกไว้ไม่สำเร็จ", error);
+      }
+      changeCardSize(savedCardSize);
       calculateMarketDate();
       initShopIdentity();
       initializeDynamicItemActions();

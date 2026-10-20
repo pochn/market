@@ -10,6 +10,12 @@
   <style>
     body { font-family: 'Prompt', sans-serif; -webkit-tap-highlight-color: transparent; }
     .checked-box { opacity: 0.4; filter: grayscale(1); }
+    body[data-card-size="small"] [data-order-card],
+    body[data-card-size="small"] #summaryList > button { padding: 0.5rem !important; }
+    body[data-card-size="medium"] [data-order-card],
+    body[data-card-size="medium"] #summaryList > button { padding: 0.75rem !important; }
+    body[data-card-size="large"] [data-order-card],
+    body[data-card-size="large"] #summaryList > button { padding: 1.25rem !important; }
   </style>
 </head>
 <body class="bg-gray-100 min-h-screen pb-12 text-gray-800">
@@ -18,7 +24,7 @@
   <header class="bg-emerald-800 text-white p-3.5 shadow-md sticky top-0 z-40">
     <div class="max-w-xl mx-auto flex flex-col gap-2.5">
       
-      <div class="flex justify-between items-center gap-2">
+      <div class="flex flex-wrap justify-between items-center gap-2">
         <h1 class="text-lg font-black tracking-tight">🛒 ตลาดเช้าแม่ทิพย์</h1>
 
         <!-- สลับโหมดหลัก: หน้างานตลาดเช้า vs ระบบหลังบ้าน -->
@@ -36,6 +42,12 @@
           <button type="button" data-action="set-admin-font-size" data-font-size="medium" aria-label="ขนาดใหญ่ A+" class="admin-font-size-button px-1 py-1 rounded text-[10px] font-bold bg-white text-emerald-900 shadow whitespace-nowrap">A+</button>
           <button type="button" data-action="set-admin-font-size" data-font-size="large" aria-label="ขนาดใหญ่พิเศษ A++" class="admin-font-size-button px-1 py-1 rounded text-[10px] font-bold text-emerald-100 hover:bg-emerald-700 whitespace-nowrap">A++</button>
           <button type="button" data-action="set-admin-font-size" data-font-size="xlarge" aria-label="ขนาดใหญ่ที่สุด A+++" class="admin-font-size-button px-1 py-1 rounded text-[10px] font-bold text-emerald-100 hover:bg-emerald-700 whitespace-nowrap">A+++</button>
+        </div>
+        <div class="flex items-center gap-0.5 bg-emerald-900/80 p-0.5 rounded-lg border border-emerald-700" role="group" aria-label="ปรับขนาดการ์ด">
+          <span class="text-[10px] text-emerald-100 px-1">การ์ด</span>
+          <button type="button" data-action="set-admin-card-size" data-card-size="small" aria-label="การ์ดเล็ก" class="admin-card-size-button px-1.5 py-1 rounded text-[10px] font-bold text-emerald-100 hover:bg-emerald-700">เล็ก</button>
+          <button type="button" data-action="set-admin-card-size" data-card-size="medium" aria-label="การ์ดขนาดปกติ" class="admin-card-size-button px-1.5 py-1 rounded text-[10px] font-bold bg-white text-emerald-900 shadow">ปกติ</button>
+          <button type="button" data-action="set-admin-card-size" data-card-size="large" aria-label="การ์ดใหญ่" class="admin-card-size-button px-1.5 py-1 rounded text-[10px] font-bold text-emerald-100 hover:bg-emerald-700">ใหญ่</button>
         </div>
       </div>
 
