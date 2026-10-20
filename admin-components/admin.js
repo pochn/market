@@ -129,6 +129,74 @@
     setAdminCardSize(size);
   }
 
+  async function openAdminDisplaySettingsModal() {
+    let currentFont = "large";
+    let currentCard = "large";
+    try {
+      const savedFont = localStorage.getItem("admin_font_size");
+      const savedCard = localStorage.getItem("admin_card_size");
+      if (Object.prototype.hasOwnProperty.call(adminFontSizes, savedFont)) currentFont = savedFont;
+      if (["small", "medium", "large"].includes(savedCard)) currentCard = savedCard;
+    } catch (error) {
+      console.warn("อ่านค่าการตั้งค่าหน้าจอแอดมินไม่สำเร็จ", error);
+    }
+
+    const result = await Swal.fire({
+      title: "⚙️ ตั้งค่าขนาดหน้าจอ",
+      html: `
+        <div class="space-y-4 text-left text-sm py-2">
+          <div>
+            <label class="block font-bold text-gray-700 mb-1.5">ขนาดตัวหนังสือ:</label>
+            <div class="grid grid-cols-5 gap-1 text-center font-bold text-xs">
+              ${["xsmall", "small", "medium", "large", "xlarge"].map((size, index) => `
+                <button type="button" data-admin-display-font="${size}" class="py-2 border rounded-xl ${currentFont === size ? "bg-emerald-600 text-white border-emerald-600" : "bg-gray-50 text-gray-700"}">
+                  ${["A-", "A", "A+", "A++", "A+++"][index]}
+                </button>
+              `).join("")}
+            </div>
+          </div>
+          <div>
+            <label class="block font-bold text-gray-700 mb-1.5">ขนาดการ์ด:</label>
+            <div class="grid grid-cols-3 gap-1.5 text-center font-bold text-xs">
+              ${[["small", "เล็ก"], ["medium", "ปกติ"], ["large", "ใหญ่"]].map(([size, label]) => `
+                <button type="button" data-admin-display-card="${size}" class="py-2 border rounded-xl ${currentCard === size ? "bg-emerald-600 text-white border-emerald-600" : "bg-gray-50 text-gray-700"}">${label}</button>
+              `).join("")}
+            </div>
+          </div>
+        </div>
+      `,
+      showCancelButton: true,
+      cancelButtonText: "คืนค่าเริ่มต้น",
+      confirmButtonText: "ตกลง / ปิด",
+      confirmButtonColor: "#059669",
+      cancelButtonColor: "#6b7280",
+      didOpen: popup => {
+        popup.querySelectorAll("[data-admin-display-font]").forEach(button => {
+          button.addEventListener("click", () => {
+            setAdminFontSize(button.dataset.adminDisplayFont);
+            popup.querySelectorAll("[data-admin-display-font]").forEach(option => {
+              const active = option === button;
+              option.className = `py-2 border rounded-xl ${active ? "bg-emerald-600 text-white border-emerald-600" : "bg-gray-50 text-gray-700"}`;
+            });
+          });
+        });
+        popup.querySelectorAll("[data-admin-display-card]").forEach(button => {
+          button.addEventListener("click", () => {
+            setAdminCardSize(button.dataset.adminDisplayCard);
+            popup.querySelectorAll("[data-admin-display-card]").forEach(option => {
+              const active = option === button;
+              option.className = `py-2 border rounded-xl ${active ? "bg-emerald-600 text-white border-emerald-600" : "bg-gray-50 text-gray-700"}`;
+            });
+          });
+        });
+      }
+    });
+    if (result.dismiss === Swal.DismissReason.cancel) {
+      setAdminFontSize("large");
+      setAdminCardSize("large");
+    }
+  }
+
   const panelByTab = {
     market: "marketPanel",
     packing: "packingPanel",
@@ -1729,15 +1797,8 @@
       case "show-unpaid-shops":
         await showUnpaidShopsModal();
         break;
-      case "set-admin-font-size":
-        setAdminFontSize(control.dataset.fontSize);
-        break;
-      case "set-admin-card-size":
-        setAdminCardSize(control.dataset.cardSize);
-        break;
-      case "reset-display-settings":
-        setAdminFontSize("medium");
-        setAdminCardSize("medium");
+      case "open-admin-display-settings":
+        await openAdminDisplaySettingsModal();
         break;
       case "quick-share-line":
         await shareOrderInvoice(control.dataset.orderId, control);
