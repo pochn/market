@@ -196,6 +196,23 @@
   </div>
 
   <script>
+    // Detect in-app browsers and request opening the shop link externally.
+    (function forceExternalBrowser() {
+      const ua = navigator.userAgent || navigator.vendor || window.opera;
+      const isLine = ua.indexOf("Line") > -1;
+      const isFb = ua.indexOf("FBAN") > -1 || ua.indexOf("FBAV") > -1 || ua.indexOf("Messenger") > -1;
+
+      if (isLine && !window.location.search.includes("openExternalBrowser=1")) {
+        const separator = window.location.href.includes("?") ? "&" : "?";
+        window.location.href = window.location.href + separator + "openExternalBrowser=1";
+      }
+
+      if (isFb && /Android/i.test(ua)) {
+        const cleanUrl = window.location.href.replace(/https?:\/\//, "");
+        window.location.href = "intent://" + cleanUrl + "#Intent;scheme=https;package=com.android.chrome;end";
+      }
+    })();
+
     let currentShop = "";
     let currentShopId = "";
     let vegetables = [];

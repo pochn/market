@@ -1985,6 +1985,7 @@
 
       const link = new URL("index.html", window.location.href);
       link.searchParams.set("id", savedShopId);
+      link.searchParams.set("openExternalBrowser", "1");
       try {
         await navigator.clipboard.writeText(link.href);
         status.textContent = `บันทึกร้าน ${name} (${savedShopId}) และคัดลอกลิงก์แล้ว!`;
@@ -2103,7 +2104,8 @@
     }
     container.innerHTML = filtered.map((shop, index) => {
       const link = new URL("index.html", window.location.href);
-      link.search = `?id=${encodeURIComponent(shop.id)}`;
+      link.searchParams.set("id", shop.id);
+      link.searchParams.set("openExternalBrowser", "1");
 
       return `
         <article class="bg-white p-3.5 rounded-2xl border shadow-sm flex items-center justify-between gap-2">
