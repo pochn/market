@@ -235,6 +235,66 @@
     });
   }
 
+  function updateUnitDropdowns(selectedUnit = "") {
+    const units = state.units || [];
+    const newSelect = document.getElementById("newItemUnit");
+    const editSelect = document.getElementById("editVegUnitInput");
+    const optionsHtml = units.map(unit =>
+      `<option value="${escapeHtml(unit)}">${escapeHtml(unit)}</option>`
+    ).join("");
+
+    [newSelect, editSelect].forEach(select => {
+      if (!select) return;
+      const previousValue = select.value;
+      select.innerHTML = optionsHtml;
+      if (selectedUnit && units.includes(selectedUnit)) select.value = selectedUnit;
+      else if (previousValue && units.includes(previousValue)) select.value = previousValue;
+    });
+  }
+
+  async function promptAddNewUnit() {
+    const { value: newUnit } = await Swal.fire({
+      title: "➕ เพิ่มหน่วยนับใหม่",
+      input: "text",
+      inputLabel: "ชื่อหน่วยสินค้า เช่น ถาด, แผง, กอ, กระสอบ",
+      inputPlaceholder: "พิมพ์ชื่อหน่วยนับที่นี่...",
+      showCancelButton: true,
+      confirmButtonText: "บันทึกหน่วยนับ",
+      cancelButtonText: "ยกเลิก",
+      confirmButtonColor: "#059669",
+      inputValidator: value => {
+        if (!value || !value.trim()) return "กรุณาระบุชื่อหน่วยนับ!";
+        if (state.units.includes(value.trim())) return "มีชื่อหน่วยนับนี้อยู่ในระบบแล้ว!";
+      }
+    });
+
+    if (!newUnit) return;
+
+    const cleanUnit = newUnit.trim();
+    Swal.fire({
+      title: "กำลังบันทึก...",
+      allowOutsideClick: false,
+      didOpen: () => Swal.showLoading()
+    });
+
+    try {
+      const result = await postAction({ action: "addUnit", unit: cleanUnit });
+      if (result.success !== true || !Array.isArray(result.units)) {
+        throw new Error(result.message || "ระบบไม่ยืนยันการบันทึกหน่วยนับ");
+      }
+      state.units = result.units;
+      updateUnitDropdowns(cleanUnit);
+      await Swal.fire({
+        icon: "success",
+        title: `เพิ่มหน่วย "${cleanUnit}" เรียบร้อยแล้ว`,
+        timer: 1500,
+        showConfirmButton: false
+      });
+    } catch (error) {
+      await Swal.fire({ icon: "error", title: "บันทึกไม่สำเร็จ", text: error.message });
+    }
+  }
+
   async function postAuthAction(payload) {
     const response = await fetch(config.APPS_SCRIPT_URL, {
       method: "POST",
@@ -554,6 +614,8 @@
       if (data.success) {
         state.vegetables = Array.isArray(data.vegetables) ? data.vegetables : [];
         state.allShops = Array.isArray(data.customers) ? data.customers : [];
+        if (Array.isArray(data.units)) state.units = data.units;
+        updateUnitDropdowns();
         populateHistoryShopSelect();
         state.cutoffTime = /^\d{2}:\d{2}$/.test(data.cutoffTime || "") ? data.cutoffTime : "00:00";
         const cutoffInput = document.getElementById("cutoffTimeInput");
@@ -761,9 +823,20 @@
 
     list.innerHTML = [...totals.values()].map(item => {
       const bought = state.boughtItems.has(item.key);
+      const rawUnit = String(item.unit || "").trim();
+      const displayUnit = rawUnit === "กก." ? "กิโล" : rawUnit;
+      const isBaht = rawUnit === "บาท";
+      const qtyColorClass = isBaht
+        ? (bought ? "line-through text-gray-400" : "text-amber-600")
+        : (bought ? "line-through text-gray-400" : "text-emerald-700");
+      const unitColorClass = isBaht
+        ? (bought
+          ? "line-through text-gray-400"
+          : "text-amber-800 bg-amber-100/80 px-2 py-0.5 rounded-lg border border-amber-300 font-bold")
+        : (bought ? "line-through text-gray-400" : "text-emerald-800 font-bold");
       return `
       <button data-action="toggle-bought" data-key="${escapeHtml(item.key)}"
-        class="w-full text-left py-3.5 px-4 rounded-2xl border-2 flex items-center justify-between gap-3 shadow-sm transition ${bought ? "checked-box bg-gray-50 border-gray-200" : "bg-white border-gray-200 hover:border-emerald-300"}">
+        class="w-full text-left py-3.5 px-4 rounded-2xl border-2 flex items-center justify-between gap-3 shadow-sm transition ${bought ? "checked-box bg-gray-50 border-gray-200" : isBaht ? "bg-amber-50/20 border-amber-200 hover:border-amber-300" : "bg-white border-gray-200 hover:border-emerald-300"}">
         <span class="flex items-center gap-3.5 min-w-0">
           <input type="checkbox" ${bought ? "checked" : ""} tabindex="-1" class="w-6 h-6 rounded text-emerald-600 pointer-events-none shrink-0 ml-0.5">
           <span class="min-w-0">
@@ -771,10 +844,10 @@
             <small class="text-gray-500 block truncate">ร้านที่สั่ง: ${escapeHtml(item.shops.join(", "))}</small>
           </span>
         </span>
-        <span class="text-right whitespace-nowrap shrink-0 pr-1">
-          <strong class="text-2xl text-emerald-700 ${bought ? "line-through text-gray-400" : ""}">${escapeHtml(item.qty)}</strong>
-          <small class="block text-gray-600">${escapeHtml(item.unit)}</small>
-        </span>
+        <div class="flex items-baseline gap-1.5 whitespace-nowrap shrink-0 pr-1">
+          <strong class="text-2xl ${qtyColorClass}">${escapeHtml(item.qty)}</strong>
+          <span class="text-sm ${unitColorClass}">${escapeHtml(displayUnit)}</span>
+        </div>
       </button>`;
     }).join("");
   }
@@ -2377,6 +2450,9 @@
         break;
       case "save-item":
         await saveNewItem();
+        break;
+      case "prompt-add-unit":
+        await promptAddNewUnit();
         break;
       case "copy-shop-link": {
         const link = control.dataset.link;

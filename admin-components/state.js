@@ -14,6 +14,7 @@ window.MarketState = {
   selectedHistoryShop: "",
   allShops: [],
   vegetables: [],
+  units: ["กก.", "ขีด", "กรัม", "ลูก", "ถุง", "มัด", "ห่อ", "แพ็ค", "ตัว", "ถาด"],
   packedItems: readMarketStorage("market_packed_items", {}),
   boughtItems: new Set(readMarketStorage("market_bought_items", [])),
   customPrices: readMarketStorage("market_custom_prices", {}),

@@ -276,16 +276,12 @@
         </div>
         <div>
           <label class="block text-xs font-bold text-gray-700 mb-1">หน่วยนับ:</label>
-          <select id="editVegUnitInput" class="w-full p-2.5 border rounded-xl bg-white font-semibold focus:ring-2 focus:ring-emerald-500 focus:outline-none">
-            <option value="กก.">กิโลกรัม (กก.)</option>
-            <option value="ขีด">ขีด</option>
-            <option value="กรัม">กรัม</option>
-            <option value="ลูก">ลูก</option>
-            <option value="ถุง">ถุง</option>
-            <option value="มัด">มัด</option>
-            <option value="ห่อ">ห่อ</option>
-            <option value="แพ็ค">แพ็ค</option>
-          </select>
+          <div class="flex gap-2">
+            <select id="editVegUnitInput" class="flex-1 p-2.5 border rounded-xl bg-white font-semibold focus:ring-2 focus:ring-emerald-500 focus:outline-none"></select>
+            <button type="button" data-action="prompt-add-unit" class="px-3 py-2 bg-emerald-100 hover:bg-emerald-200 text-emerald-800 font-bold text-xs rounded-xl border border-emerald-300 shadow-sm shrink-0">
+              ➕ เพิ่มหน่วย
+            </button>
+          </div>
         </div>
       </div>
       <div class="flex gap-2 border-t pt-3">

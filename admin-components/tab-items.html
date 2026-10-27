@@ -9,14 +9,12 @@
     <input id="newItemName" maxlength="120" placeholder="เช่น มะนาวแป้น" class="w-full p-3 mt-1 border rounded-xl text-sm">
   </label>
   <label class="block text-xs font-bold">หน่วยนับ
-    <select id="newItemUnit" class="w-full p-3 mt-1 border rounded-xl bg-white text-sm">
-      <option value="กก.">กิโลกรัม (กก.)</option>
-      <option value="ขีด">ขีด</option>
-      <option value="ลูก">ลูก</option>
-      <option value="ถุง">ถุง</option>
-      <option value="มัด">มัด</option>
-      <option value="ห่อ">ห่อ</option>
-    </select>
+    <div class="flex gap-2 mt-1">
+      <select id="newItemUnit" class="flex-1 p-3 border rounded-xl bg-white text-sm font-semibold focus:ring-2 focus:ring-emerald-500"></select>
+      <button type="button" data-action="prompt-add-unit" class="px-3 py-2 bg-emerald-100 hover:bg-emerald-200 text-emerald-800 font-bold text-xs rounded-xl border border-emerald-300 shadow-sm shrink-0 flex items-center gap-1">
+        <span>➕ เพิ่มหน่วย</span>
+      </button>
+    </div>
   </label>
   <p class="text-xs text-gray-500">รูปจะถูกย่อไม่เกิน 400px และแปลงเป็น WebP ก่อนอัปโหลด</p>
   <button data-action="save-item" id="saveItemButton" class="w-full py-3 bg-emerald-700 text-white rounded-xl font-bold transition disabled:cursor-wait disabled:opacity-80">บันทึกสินค้า</button>

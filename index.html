@@ -539,7 +539,17 @@
           case 'change-veg-qty':
             changeQty(name, Number(control.dataset.delta));
             break;
+          case 'set-veg-mode':
+            setVegOrderMode(name, control.dataset.mode);
+            break;
+          case 'set-veg-baht':
+            setCustomBaht(name, control.dataset.qty);
+            break;
         }
+      });
+      document.body.addEventListener('change', event => {
+        const control = event.target.closest('[data-action="set-custom-baht"]');
+        if (control) setCustomBaht(control.dataset.vegName, control.value);
       });
     }
 
@@ -747,7 +757,7 @@
               item.name === it.name && String(item.status || "ACTIVE").trim().toUpperCase() !== "HIDDEN");
             if (!vegetable) return;
             selectedVegNames.add(vegetable.name);
-            cartItems[vegetable.name] = { qty: Number(it.qty) || 1, unit: vegetable.unit };
+            cartItems[vegetable.name] = { qty: Number(it.qty) || 1, unit: it.unit || vegetable.unit };
           });
           document.getElementById("addonText").value = templateOrder.addOnNote || "";
           document.getElementById("customerNote").value = currentOrder ? currentOrder.notes || "" : "";
@@ -1025,34 +1035,87 @@
       const selectedArray = Array.from(selectedVegNames);
       container.innerHTML = selectedArray.map(name => {
         const item = cartItems[name] || { qty: 1, unit: 'กก.' };
+        const isBahtMode = item.unit === "บาท";
+        const currentQty = item.qty || (isBahtMode ? 20 : 1);
         return `
-          <div class="bg-white p-3.5 rounded-2xl border border-gray-200 shadow-sm space-y-2.5">
+          <div class="bg-white p-3.5 rounded-2xl border border-gray-200 shadow-sm space-y-3">
             <div class="flex justify-between items-center">
-              <div>
-                <span class="font-extrabold text-base text-gray-900">${escapeHtml(name)}</span>
-                <span class="text-xs text-gray-500 ml-1">(${escapeHtml(item.unit)})</span>
-              </div>
+              <span class="font-extrabold text-base text-gray-900">${escapeHtml(name)}</span>
               <button data-action="remove-veg" data-veg-name="${escapeHtml(name)}" class="text-xs text-red-500 font-bold px-2 py-1 bg-red-50 rounded-lg">
                 ✕ ยกเลิก
               </button>
             </div>
 
-            <div class="flex items-center justify-between gap-2 pt-1 border-t border-gray-100">
-              <div class="flex gap-1.5">
-                <button data-action="set-veg-qty" data-veg-name="${escapeHtml(name)}" data-qty="0.5" class="px-2.5 py-1.5 rounded-xl border font-bold text-xs ${item.qty === 0.5 ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-gray-50 text-gray-700 border-gray-200'}">0.5</button>
-                <button data-action="set-veg-qty" data-veg-name="${escapeHtml(name)}" data-qty="1" class="px-2.5 py-1.5 rounded-xl border font-bold text-xs ${item.qty === 1 ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-gray-50 text-gray-700 border-gray-200'}">1</button>
-                <button data-action="set-veg-qty" data-veg-name="${escapeHtml(name)}" data-qty="2" class="px-2.5 py-1.5 rounded-xl border font-bold text-xs ${item.qty === 2 ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-gray-50 text-gray-700 border-gray-200'}">2</button>
-              </div>
-
-              <div class="flex items-center rounded-xl overflow-hidden border border-gray-300 bg-white shadow-sm">
-                <button data-action="change-veg-qty" data-veg-name="${escapeHtml(name)}" data-delta="-1" class="w-10 h-10 bg-gray-100 active:bg-gray-200 text-gray-800 font-extrabold text-lg flex items-center justify-center">-</button>
-                <span class="w-12 text-center font-extrabold text-base text-gray-800">${escapeHtml(item.qty)}</span>
-                <button data-action="change-veg-qty" data-veg-name="${escapeHtml(name)}" data-delta="1" class="w-10 h-10 bg-emerald-600 active:bg-emerald-700 text-white font-extrabold text-lg flex items-center justify-center">+</button>
-              </div>
+            <div class="grid grid-cols-2 gap-1.5 p-1 bg-gray-100 rounded-xl text-xs font-bold">
+              <button type="button" data-action="set-veg-mode" data-veg-name="${escapeHtml(name)}" data-mode="weight"
+                class="py-1.5 rounded-lg transition ${!isBahtMode ? 'bg-white text-emerald-800 shadow' : 'text-gray-500'}">
+                ⚖️ ชั่งกิโล / ชั่งหน่วย
+              </button>
+              <button type="button" data-action="set-veg-mode" data-veg-name="${escapeHtml(name)}" data-mode="baht"
+                class="py-1.5 rounded-lg transition ${isBahtMode ? 'bg-amber-600 text-white shadow' : 'text-gray-500'}">
+                💵 ระบุเงิน (บาท)
+              </button>
             </div>
+
+            ${isBahtMode ? `
+              <div class="pt-1 space-y-2 border-t border-gray-100">
+                <div class="flex items-center justify-between gap-2">
+                  <span class="text-xs font-bold text-amber-800">เลือกยอดเงิน:</span>
+                  <div class="flex items-center gap-1.5">
+                    <input type="number" min="5" step="5" value="${escapeHtml(currentQty)}"
+                      data-action="set-custom-baht" data-veg-name="${escapeHtml(name)}"
+                      class="w-20 p-1.5 text-center font-black text-amber-800 border-2 border-amber-400 rounded-xl bg-amber-50 focus:bg-white focus:outline-none text-base">
+                    <span class="text-xs font-bold text-gray-600">บาท</span>
+                  </div>
+                </div>
+                <div class="grid grid-cols-4 gap-1.5 text-xs font-bold">
+                  ${[10, 20, 30, 50].map(val => `
+                    <button type="button" data-action="set-veg-baht" data-veg-name="${escapeHtml(name)}" data-qty="${val}"
+                      class="py-2 rounded-xl border ${Number(currentQty) === val ? 'bg-amber-600 text-white border-amber-600' : 'bg-gray-50 text-gray-700 border-gray-200'}">
+                      ${val} ฿
+                    </button>
+                  `).join('')}
+                </div>
+              </div>
+            ` : `
+              <div class="flex items-center justify-between gap-2 pt-1 border-t border-gray-100">
+                <div class="flex gap-1.5">
+                  <button data-action="set-veg-qty" data-veg-name="${escapeHtml(name)}" data-qty="0.5" class="px-2.5 py-1.5 rounded-xl border font-bold text-xs ${item.qty === 0.5 ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-gray-50 text-gray-700 border-gray-200'}">0.5</button>
+                  <button data-action="set-veg-qty" data-veg-name="${escapeHtml(name)}" data-qty="1" class="px-2.5 py-1.5 rounded-xl border font-bold text-xs ${item.qty === 1 ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-gray-50 text-gray-700 border-gray-200'}">1</button>
+                  <button data-action="set-veg-qty" data-veg-name="${escapeHtml(name)}" data-qty="2" class="px-2.5 py-1.5 rounded-xl border font-bold text-xs ${item.qty === 2 ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-gray-50 text-gray-700 border-gray-200'}">2</button>
+                </div>
+                <div class="flex items-center rounded-xl overflow-hidden border border-gray-300 bg-white shadow-sm">
+                  <button data-action="change-veg-qty" data-veg-name="${escapeHtml(name)}" data-delta="-1" class="w-10 h-10 bg-gray-100 active:bg-gray-200 text-gray-800 font-extrabold text-lg flex items-center justify-center">-</button>
+                  <span class="w-12 text-center font-extrabold text-base text-gray-800">${escapeHtml(item.qty)}</span>
+                  <button data-action="change-veg-qty" data-veg-name="${escapeHtml(name)}" data-delta="1" class="w-10 h-10 bg-emerald-600 active:bg-emerald-700 text-white font-extrabold text-lg flex items-center justify-center">+</button>
+                </div>
+              </div>
+            `}
           </div>
         `;
       }).join('');
+    }
+
+    function setVegOrderMode(name, mode) {
+      if (!cartItems[name]) return;
+      const veg = vegetables.find(v => v.name === name);
+      const defaultUnit = veg ? veg.unit : "กก.";
+
+      if (mode === "baht") {
+        cartItems[name].unit = "บาท";
+        cartItems[name].qty = 20;
+      } else {
+        cartItems[name].unit = defaultUnit;
+        cartItems[name].qty = 1;
+      }
+      renderSelectedVegList();
+    }
+
+    function setCustomBaht(name, amount) {
+      if (!cartItems[name]) return;
+      const val = Number(amount);
+      cartItems[name].qty = val > 0 ? val : 20;
+      renderSelectedVegList();
     }
 
     function setQty(name, val) {

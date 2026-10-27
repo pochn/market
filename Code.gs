@@ -43,6 +43,46 @@ function getCutoffTime() {
   return "00:00";
 }
 
+const DEFAULT_UNITS = ["กก.", "ขีด", "กรัม", "ลูก", "ถุง", "มัด", "ห่อ", "แพ็ค", "ตัว", "ถาด"];
+
+function getUnitsList() {
+  const sheet = getSettingsSheet();
+  const rows = sheet.getDataRange().getValues();
+  for (let i = 1; i < rows.length; i++) {
+    if (String(rows[i][0]).trim() === "unitsList") {
+      const val = String(rows[i][1] || "").trim();
+      if (val) {
+        return val.split(",").map(u => u.trim()).filter(Boolean);
+      }
+    }
+  }
+  sheet.appendRow(["unitsList", DEFAULT_UNITS.join(",")]);
+  return DEFAULT_UNITS;
+}
+
+function saveNewUnit(newUnit) {
+  const sheet = getSettingsSheet();
+  const currentUnits = getUnitsList();
+  const cleanUnit = String(newUnit || "").trim();
+  if (!cleanUnit) return currentUnits;
+  if (!currentUnits.includes(cleanUnit)) {
+    currentUnits.push(cleanUnit);
+    const rows = sheet.getDataRange().getValues();
+    let updated = false;
+    for (let i = 1; i < rows.length; i++) {
+      if (String(rows[i][0]).trim() === "unitsList") {
+        sheet.getRange(i + 1, 2).setValue(currentUnits.join(","));
+        updated = true;
+        break;
+      }
+    }
+    if (!updated) {
+      sheet.appendRow(["unitsList", currentUnits.join(",")]);
+    }
+  }
+  return currentUnits;
+}
+
 function isCustomerOrderLocked(row) {
   const status = String(row[6] || "").trim();
   if (status === "จัดแล้ว" || status === "ยกเลิกแล้ว") return true;
@@ -306,7 +346,8 @@ function doGet(e) {
         success: true,
         vegetables: vegetables,
         customers: customers,
-        cutoffTime: getCutoffTime()
+        cutoffTime: getCutoffTime(),
+        units: getUnitsList()
       });
     }
     
@@ -512,6 +553,13 @@ function doPost(e) {
     const orderSheet = ss.getSheetByName(SHEET_ORDERS);
     const itemsSheet = ss.getSheetByName(SHEET_ITEMS);
     const shopsSheet = ss.getSheetByName(SHEET_SHOPS);
+
+    if (data.action === "addUnit") {
+      const newUnit = String(data.unit || "").trim();
+      if (!newUnit) return responseJSON({ success: false, message: "กรุณาระบุชื่อหน่วยนับ" });
+      const updatedUnits = saveNewUnit(newUnit);
+      return responseJSON({ success: true, units: updatedUnits });
+    }
     
     // 2.1 สั่งออเดอร์ใหม่จากลูกค้า (index.html)
     if (data.action === "createOrder") {
@@ -700,7 +748,10 @@ function doPost(e) {
       }
       for (const item of data.items) {
         const qty = Number(item.qty);
-        const unitPrice = Number(item.unitPrice);
+        let unitPrice = Number(item.unitPrice);
+        if (String(item.unit).trim() === "บาท") {
+          unitPrice = 1;
+        }
         if (!isFinite(qty) || qty < 0 || !isFinite(unitPrice) || unitPrice < 0) {
           return responseJSON({ success: false, message: "Invalid quantity or unit price" });
         }
